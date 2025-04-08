@@ -22,3 +22,90 @@
 # virtual machine crash logs, see http://www.java.com/en/download/help/error_hotspot.xml
 hs_err_pid*
 replay_pid*
+
+# Python bytecode files
+*.pyc
+*.pyo
+__pycache__/
+
+# Distribution / packaging
+.eggs/
+dist/
+build/
+sdist/
+*.egg-info/
+*.whl
+wheels/
+*.egg
+
+# Installer logs
+pip-log.txt
+pip-delete-this.txt
+
+# Environments
+.venv/
+venv/
+env/
+ENV/
+virtualenv/
+myvenv/
+python-env/
+.python-env/
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.coverage
+.coverage.*
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.pytest_cache/
+!**/__init__.py
+
+# Translations
+*.mo
+*.pot
+
+# OS or Editor-specific files
+.DS_Store
+*.swp
+*.swo
+*.vim/
+.vscode/
+*.sublime*
+xcuserdata/
+.idea/
+*.iml
+
+# Log and temp files
+*.log
+*.tmp
+temp/
+tmp/
+tmp.*
+*.bak
+*.orig
+
+# Secrets and credentials
+*.key
+*.pem
+*.pfx
+secrets.ini
+credentials.ini
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+
+# Data and assets (Optional, depending on your project)
+# data/ # Uncomment if you don't want to track your data files
+# assets/ # Uncomment if you don't want to track your asset files
+
+# Ignore compiled C extensions
+*.so
+*.pyd
+
+# Ignore any files with credentials or sensitive data
+# credentials.json
+# api_keys.txt
