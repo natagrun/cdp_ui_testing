@@ -1,15 +1,8 @@
 import asyncio
-from time import sleep
-
-import websockets
-import json
-import aiohttp
-import base64
-
+from asyncio import sleep
 
 from new_main.driver.web_socket_client import WebSocketClient
-from new_main.handlers.base_handler import BaseHandler
-from new_main.handlers.dom_handler import DOMHandler
+from new_main.handlers.dom_handler import DOMHandler, logger
 from new_main.handlers.element_handler import ElementHandler
 from new_main.handlers.emulation_handler import EmulationHandler
 from new_main.handlers.page_handler import PageHandler
@@ -41,7 +34,7 @@ async def test_websocket_connection():
 
         # Активируем протокол Page
         await page_handler.enable_page()
-        await emu_handler.enable_emulation()
+        # await emu_handler.enable_emulation()
         await dom_handler.enable_dom()
         # Переходим на страницу и ждем ее загрузку
         # await page_handler.navigate("https://demoqa.com")
@@ -49,41 +42,77 @@ async def test_websocket_connection():
         # Перезагружаем страницу
         # await page_handler.reload()
 
-        await page_handler.navigate("https://demoqa.com/links")
-        # await page_handler.navigate("https://chatgptchatapp.com/")
-        # Перезагружаем страницу
+        await page_handler.navigate("https://demoqa.com/text-box")
 
-        # await page_handler.reload()
+
+
+        # element_data = await dom_handler.find_element_by_xpath("//button[@id='doubleClickBtn']")
+        # logger.error(element_data)
+        # await dom_handler.click_element(element_data)
+        # await sleep(3)
+
+        # Получить текст элемента по nodeId
+        # text = await dom_handler.get_text(35)
+        # print(text)
+        # Получить текст элемента по селектору
+        # text = await dom_handler.get_text_by_selector("#doubleClickBtn")
+        # print(text)
+        # element_data = await dom_handler.find_element_by_xpath("//button[@id='doubleClickBtn']")
+        # element_data.__setattr__("nodeId",113)
+        # text = await dom_handler.get_text_by_element(element_data)
+        # print(text)
         #
-        # await emu_handler.set_viewport_size(600,600)
-        # await page_handler.reload()
-        # sleep(5)
-        # await emu_handler.reset_viewport()
-        # await page_handler.reload()
-        # sleep(5)
-        # Делаем скриншот страницы
-        # await page_handler.capture_screenshot()
-        # sleep(3)
+        # element_cock = await dom_handler.find_element_by_xpath("//li[@id='item-0']")
+        # await dom_handler.click_element(element_cock)
+        # Кликаем с ожиданием навигации
+        # success, new_url = await dom_handler.click_element(element_cock, wait_for_navigation=True)
 
-        # document = await dom_handler.get_document()
-        # # print(1)
-        # root= json.loads(document)
-        # root_id = root['result']['root']['nodeId']
-        # print(root_id)
-        # print(1)
-        # Ищем кнопку по XPath
-        # await dom_handler.query_selector_xpath(xpath="//input[@type='radio']")
+        # if success:
+        #     if new_url:
+        #         print(f"Навигация произошла! Новый URL: {new_url}")
+        #     else:
+        #         print("Клик выполнен, но навигации не было")
+        # else:
+        #     print("Ошибка при клике")
+        # text = await dom_handler.get_text_by_element(element_cock)
+        # print(text)
+        #
+        # element_butt = await dom_handler.find_element_by_xpath("//button[@id='rightClickBtn']")
+        # text = await dom_handler.get_text_by_element(element_butt)
+        # print(text)
+        # await dom_handler.click_element(element_butt)
+        # await sleep(3)
+        # await dom_handler.click_element(element_data)
+        # await sleep(3)
+        # await dom_handler.click_element(element_cock)
 
-        await dom_handler.enable_dom()
+        text_input = await dom_handler.find_element_by_xpath("//*[@id='userName']")
 
-        element_data = await dom_handler.find_element_by_id("simpleLink")
-        if element_data:
-            await dom_handler.click_element(element_data)
+        await dom_handler.insert_text(text_input,"Люблю маму")
+
+        text_input2 = await dom_handler.find_element_by_xpath("//*[@id='userEmail']")
+
+        await dom_handler.click_element(text_input2)
+
+        text_input = await dom_handler.find_element_by_xpath("//*[@id='userName']")
+
+        await dom_handler.click_element(text_input)
+
+        text = await dom_handler.get_text_by_element(text_input)
+
+        print(text)
+
+
+
+        # Получить атрибуты элемента
+        # attrs = await dom_handler.get_attributes(35)
+        # if attrs:
+        #     print(attrs.get("class"), attrs.get("type"))
 
         # Вариант 2 - комбинированный
         # success = await dom_handler.click_element_by_id("simpleLink")
 
-        await page_handler.reload()
+        # await page_handler.reload()
 
         # print(1)
         # print(button)

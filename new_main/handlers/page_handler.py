@@ -1,12 +1,23 @@
 import asyncio
-import time
-
-import websockets
-import json
-import aiohttp
 import base64
+import json
+import logging
+import time
+from typing import Dict, Union
 
 from new_main.handlers.base_handler import BaseHandler
+
+logger = logging.getLogger(__name__)
+
+async def _parse_response(response: Union[str, Dict]) -> Dict:
+    """Парсит ответ CDP (может быть строкой JSON или уже словарём)."""
+    if isinstance(response, str):
+        try:
+            return json.loads(response)
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse CDP response: {e}")
+            return {}
+    return response
 
 
 class PageHandler(BaseHandler):
@@ -122,3 +133,55 @@ class PageHandler(BaseHandler):
         print(f"Layout metrics: {response}")
         return response
 
+    async def setup_page_navigation_listeners(self):
+        """Включает отслеживание навигации и новых вкладок."""
+        # Включаем необходимые домены
+        # await self.send_request("Page.enable")
+        response = await self.send_request("Target.setDiscoverTargets", {"discover": True})
+        parsed_query = await _parse_response(response)
+        logger.error(parsed_query)
+        while True:
+            query_response = await self.client.receive_message()
+            parsed_query = await _parse_response(query_response)
+            logger.error(parsed_query)
+            # if parsed_query.get("id") is not None:
+            #     break
+
+
+    async def wait_for_navigation(self, timeout=10):
+        """
+        Ожидает навигации на новой странице.
+        Возвращает URL новой страницы или None, если навигации не было.
+        """
+        try:
+            # Получаем текущий URL
+            original_url = await self.get_current_url()
+
+            # Ожидаем событие навигации
+            navigation_event = await asyncio.wait_for(
+                self._wait_for_navigation_event(),
+                timeout=timeout
+            )
+            return navigation_event
+        except asyncio.TimeoutError:
+            return None
+
+    async def _wait_for_navigation_event(self):
+        """
+        Внутренний метод для ожидания событий навигации.
+        """
+        while True:
+            response = await self.client.receive_message()
+            data = json.loads(response)
+
+            # Проверяем события навигации
+            if data.get("method") == "Page.frameNavigated":
+                return data["params"]["frame"]["url"]
+            elif data.get("method") == "Target.attachedToTarget":
+                return data["params"]["targetInfo"]["url"]
+
+    async def get_current_url(self):
+        """Возвращает текущий URL страницы."""
+        response = await self.send_request("Page.getNavigationHistory")
+        data = json.loads(response)
+        return data["result"]["entries"][-1]["url"]
