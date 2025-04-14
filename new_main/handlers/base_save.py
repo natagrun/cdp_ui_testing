@@ -4,9 +4,6 @@ import json
 import aiohttp
 import base64
 
-from new_main.driver.web_socket_client import WebSocketClient
-
-
 class BaseHandler:
     """Общий класс для обработки запросов с инкрементированием ID."""
 

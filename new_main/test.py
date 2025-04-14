@@ -1,4 +1,5 @@
 import asyncio
+import time
 from asyncio import sleep
 
 from new_main.driver.web_socket_client import WebSocketClient
@@ -6,6 +7,12 @@ from new_main.handlers.dom_handler import DOMHandler, logger
 from new_main.handlers.element_handler import ElementHandler
 from new_main.handlers.emulation_handler import EmulationHandler
 from new_main.handlers.page_handler import PageHandler
+
+async def listen_messages(handler):
+    while True:
+        raw_msg = await handler.client.receive_message()
+        await handler.handle_incoming_message(raw_msg)
+
 
 
 async def test_websocket_connection():
@@ -27,11 +34,12 @@ async def test_websocket_connection():
         # Создаем обработчик для работы с Page
         page_handler = PageHandler(websocket_client)
         # Создаем обработчик для работы с Emulation
-        emu_handler = EmulationHandler(websocket_client)
+
         # Создаем обработчик для работы с DOM
         dom_handler = DOMHandler(websocket_client)
         element_handler = ElementHandler(dom_handler)
 
+        # asyncio.create_task(listen_messages(dom_handler))
         # Активируем протокол Page
         await page_handler.enable_page()
         # await emu_handler.enable_emulation()
@@ -43,6 +51,7 @@ async def test_websocket_connection():
         # await page_handler.reload()
 
         await page_handler.navigate("https://demoqa.com/text-box")
+
 
 
 
@@ -105,14 +114,35 @@ async def test_websocket_connection():
 
 
         # Получить атрибуты элемента
-        # attrs = await dom_handler.get_attributes(35)
-        # if attrs:
-        #     print(attrs.get("class"), attrs.get("type"))
+        attrs = await dom_handler.get_attributes(text_input)
+        if attrs:
+            print(attrs.get("class"), attrs.get("type"))
 
-        # Вариант 2 - комбинированный
-        # success = await dom_handler.click_element_by_id("simpleLink")
+        text_input = await dom_handler.find_element_by_xpath("//*[@id='userEmail']")
+        # await dom_handler.focus_on_element(text_input)
 
-        # await page_handler.reload()
+        book_element = await dom_handler.find_element_by_xpath("//div[contains(text(),\"Book\")]")
+
+        # await dom_handler.scroll_to_element(book_element)
+
+        clicker = await dom_handler.find_element_by_xpath("//*[@id='item-3'][1]")
+        # await dom_handler.scroll_to_element(clicker)
+        # if await dom_handler.is_element_visible(clicker.get("nodeId")):
+        #     logger.error("clicking")
+
+        await dom_handler.click_element(clicker,True)
+        start_time = time.time()
+        print(time.strftime('%H:%M:%S'))
+
+        # response = await asyncio.wait_for(websocket_client.receive_message(), timeout=5)
+
+        add_b = await dom_handler.find_element_by_xpath("//*[@id='addNewRecordButton']")
+
+        await dom_handler.click_element(add_b)
+        # while True:
+        #     response = await websocket_client.receive_message()
+        #     print(time.strftime('%H:%M:%S'))
+        #     # print(response)
 
         # print(1)
         # print(button)
