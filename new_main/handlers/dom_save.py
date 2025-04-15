@@ -125,7 +125,6 @@ class DOMHandler(BaseHandler):
         print(parsed)
         return parsed.get("result", {}).get("model")
 
-
     async def get_search_results(self,search_id):
         try:
             params = {
@@ -201,7 +200,6 @@ class DOMHandler(BaseHandler):
             "buttons": 0
         })
 
-
     async def press_mouse(self, x, y):
         await self.send_request("Input.dispatchMouseEvent", {
             "type": "mousePressed",
@@ -213,7 +211,6 @@ class DOMHandler(BaseHandler):
             "clickCount": 1
         })
 
-
     async def release_mouse(self, x, y):
         await self.send_request("Input.dispatchMouseEvent", {
             "type": "mouseReleased",
@@ -224,7 +221,6 @@ class DOMHandler(BaseHandler):
             "buttons": 0,
             "clickCount": 1
         })
-
 
     async def get_outer_html(self, node_id: int) -> Optional[str]:
         """
@@ -244,7 +240,6 @@ class DOMHandler(BaseHandler):
             logger.error(f"Failed to get outerHTML: {e}")
             return None
 
-
     async def get_inner_html(self, node_id: int) -> Optional[str]:
         """
         Получить innerHTML элемента по его nodeId.
@@ -262,7 +257,6 @@ class DOMHandler(BaseHandler):
         except Exception as e:
             logger.error(f"Failed to get innerHTML: {e}")
             return None
-
 
     async def get_text(self, node_id: int) -> Optional[str]:
         """
@@ -292,7 +286,6 @@ class DOMHandler(BaseHandler):
             logger.error(f"Failed to get text content: {e}")
             return None
 
-
     async def get_text_by_element(self, element_data) -> Optional[str]:
         try:
             # Получаем outerHTML элемента
@@ -313,7 +306,6 @@ class DOMHandler(BaseHandler):
             logger.error(f"Failed to get text content: {e}")
             return None
 
-
     async def get_attributes(self, element_data: Dict) -> Optional[Dict[str, str]]:
         """
         Получить атрибуты элемента в виде словаря.
@@ -323,6 +315,7 @@ class DOMHandler(BaseHandler):
 
         Returns:
             Словарь атрибутов или None в случае ошибки
+            :param element_data:
         """
         try:
 
@@ -335,8 +328,6 @@ class DOMHandler(BaseHandler):
         except Exception as e:
             logger.error(f"Failed to get attributes: {e}")
             return None
-
-
 
     async def click_element(self, element_data: Dict, wait_for_navigation=False, timeout=10) -> tuple[bool, Any | None]:
         """

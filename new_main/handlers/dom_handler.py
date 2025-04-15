@@ -1,5 +1,7 @@
+import asyncio
 import json
 import logging
+import time
 from typing import Optional, Dict, Union, Tuple, Any
 
 from new_main.handlers.base_handler import BaseHandler
@@ -47,6 +49,53 @@ class DOMHandler(BaseHandler):
         parsed = await _parse_response(response)
         logger.debug(f"DOM disabled: {parsed}")
         return parsed
+
+    async def wait_for_page_dom_load(self, timeout=30):
+        """Ожидание завершения загрузки страницы и всех вложенных фреймов."""
+        print("Waiting for dom load event...")
+        start_time = time.time()
+        active_frames = set()  # Для отслеживания загружающихся фреймов
+
+        while True:
+            # Проверка таймаута
+            if time.time() - start_time > timeout:
+                print("Page dom timeout reached!")
+                break
+
+            try:
+                response = await asyncio.wait_for(self.client.receive_message(), timeout=1)
+            except asyncio.TimeoutError:
+                # Если нет событий в течение timeout, проверяем, все ли фреймы загружены
+                if not active_frames:
+                    print("All frames loaded!")
+                    break
+                continue
+
+            response_data = json.loads(response)
+            method = response_data.get("method")
+
+            if method == "DOM.attributeModified":
+                frame_id = response_data["params"]["nodeId"]
+                active_frames.add(frame_id)
+                print(f"node {frame_id} edited parameters")
+
+            elif method == "Page.frameStoppedLoading":
+                frame_id = response_data["params"]["frameId"]
+                if frame_id in active_frames:
+                    active_frames.remove(frame_id)
+                    print(f"Frame {frame_id} stopped loading")
+
+            elif method == "Page.frameDetached":
+                frame_id = response_data["params"]["frameId"]
+                if frame_id in active_frames:
+                    active_frames.remove(frame_id)
+                    print(f"Frame {frame_id} detached")
+
+            # Также можно добавить обработку других событий, если нужно
+            elif method == "Page.loadEventFired":
+                print("Main page load event fired")
+
+        print("Page load completed!")
 
     async def get_document(self, depth: int = 2) -> Dict:
         """Получить корневой элемент документа."""
@@ -190,6 +239,23 @@ class DOMHandler(BaseHandler):
             logger.error(f"Failed to get innerHTML: {e}")
             return None
 
+    async def move_mouse_on_element(self, element_data):
+        model = element_data.get("boxModel")
+        if not model:
+            logger.error("No box model data")
+            return False
+
+        x, y = await get_center_coordinates(model)
+
+        await self.send_request("Input.dispatchMouseEvent", {
+            "type": "mouseMoved",
+            "x": x,
+            "y": y,
+            "modifiers": 0,
+            "button": "none",
+            "buttons": 0
+        })
+
     async def move_mouse(self, x, y):
         await self.send_request("Input.dispatchMouseEvent", {
             "type": "mouseMoved",
@@ -329,7 +395,7 @@ class DOMHandler(BaseHandler):
             logger.error(f"Failed to get attributes: {e}")
             return None
 
-    async def click_element(self, element_data: Dict, wait_for_navigation=False, timeout=10) -> tuple[bool, Any | None]:
+    async def click_element(self, element_data: Dict, wait_for_navigation=False, timeout=10) -> bool:
         """
         Кликнуть на элемент с опциональным ожиданием навигации.
 
@@ -366,16 +432,13 @@ class DOMHandler(BaseHandler):
 
             logger.error(f"Successfully clicked element at ({x}, {y})")
 
-            # Ожидаем навигацию, если нужно
-            new_url = None
-            if wait_for_navigation:
-                new_url = await page_handler.wait_for_navigation(timeout)
-
-            return True, new_url
+            page_handler = PageHandler(self.client)
+            await page_handler.wait_for_page_dom_load(2)
+            return True
 
         except Exception as e:
             logger.error(f"Error clicking element: {e}")
-            return False, None
+            return False
 
 
     # async def insert_text(self, element_data: Dict, text: str) -> bool:
@@ -441,6 +504,8 @@ class DOMHandler(BaseHandler):
 
         node_id = element_data["nodeId"]
 
+        await self.focus_on_element(element_data)
+
         # 1. Сначала пробуем быстрый JavaScript-метод
         js_success = await self._insert_text_via_javascript(node_id, text)
         if js_success :
@@ -450,6 +515,9 @@ class DOMHandler(BaseHandler):
         # 2. Если JavaScript-метод не сработал, пробуем медленный метод эмуляции ввода
         logger.debug("JavaScript method failed, trying input emulation...")
         input_success = await self._insert_text_via_input(node_id, text)
+
+        page_handler2 = PageHandler(self.client)
+        await page_handler2.wait_for_page_dom_load(2)
         if input_success:
             logger.debug(f"Successfully inserted text via input emulation")
             return True

@@ -16,6 +16,7 @@ async def listen_messages(handler):
 
 
 async def test_websocket_connection():
+    timerrr = time.time()
     websocket_client = WebSocketClient()
 
     # Получаем URL WebSocket через метод класса
@@ -50,8 +51,30 @@ async def test_websocket_connection():
         # Перезагружаем страницу
         # await page_handler.reload()
 
-        await page_handler.navigate("https://demoqa.com/text-box")
+        # await page_handler.navigate("https://demoqa.com/text-box")
+        print(time.strftime('%H:%M:%S'))
+        await page_handler.navigate("https://store.steampowered.com/")
 
+        cat = await dom_handler.find_element_by_xpath("//a[contains(text(),'Категории')]")
+        await dom_handler.move_mouse_on_element(cat)
+        await sleep(5)
+        sign = await dom_handler.find_element_by_xpath("//*[contains(text(),'Военная')]")
+        await dom_handler.click_element(sign)
+
+        # name = await dom_handler.find_element_by_xpath("//input[@type='text']")
+        # # await dom_handler.click_element(name)
+        # await dom_handler.insert_text(name,"Миша гей")
+
+
+        #
+        # sign2 = await dom_handler.find_element_by_xpath("//a[contains(text(),'бесплатный')]")
+        # await dom_handler.click_element(sign2)
+
+
+
+        # while True:
+        #     print(time.strftime('%H:%M:%S'))
+        #     await websocket_client.receive_message()
 
 
 
@@ -95,50 +118,92 @@ async def test_websocket_connection():
         # await sleep(3)
         # await dom_handler.click_element(element_cock)
 
-        text_input = await dom_handler.find_element_by_xpath("//*[@id='userName']")
-
-        await dom_handler.insert_text(text_input,"Люблю маму")
-
-        text_input2 = await dom_handler.find_element_by_xpath("//*[@id='userEmail']")
-
-        await dom_handler.click_element(text_input2)
-
-        text_input = await dom_handler.find_element_by_xpath("//*[@id='userName']")
-
-        await dom_handler.click_element(text_input)
-
-        text = await dom_handler.get_text_by_element(text_input)
-
-        print(text)
-
-
-
-        # Получить атрибуты элемента
-        attrs = await dom_handler.get_attributes(text_input)
-        if attrs:
-            print(attrs.get("class"), attrs.get("type"))
-
-        text_input = await dom_handler.find_element_by_xpath("//*[@id='userEmail']")
+        # text_input = await dom_handler.find_element_by_xpath("//*[@id='userName']")
+        #
+        # await dom_handler.insert_text(text_input,"Люблю маму")
+        #
+        # text_input2 = await dom_handler.find_element_by_xpath("//*[@id='userEmail']")
+        #
+        # await dom_handler.click_element(text_input2)
+        #
+        # text_input = await dom_handler.find_element_by_xpath("//*[@id='userName']")
+        #
+        # await dom_handler.click_element(text_input)
+        #
+        # text = await dom_handler.get_text_by_element(text_input)
+        #
+        # print(text)
+        #
+        #
+        #
+        # # Получить атрибуты элемента
+        # attrs = await dom_handler.get_attributes(text_input)
+        # if attrs:
+        #     print(attrs.get("class"), attrs.get("type"))
+        #
+        # text_input = await dom_handler.find_element_by_xpath("//*[@id='userEmail']")
         # await dom_handler.focus_on_element(text_input)
+        #
+        # clicker = await dom_handler.find_element_by_xpath("//*[@id='item-3'][1]")
+        # await dom_handler.click_element(clicker)
+        #
+        # delete_last_node = await dom_handler.find_element_by_xpath("//span[@title='Delete']")
+        # await dom_handler.click_element(delete_last_node)
+        # await dom_handler.click_element(delete_last_node)
+        # await dom_handler.click_element(delete_last_node)
+        #
+        #
+        # add_b = await dom_handler.find_element_by_xpath("//*[@id='addNewRecordButton']")
+        #
+        # await dom_handler.click_element(add_b)
+        #
+        #
+        # name = await dom_handler.find_element_by_xpath("//*[@id='firstName']")
+        #
+        # await dom_handler.insert_text(name,"миша")
+        #
+        # last_name = await dom_handler.find_element_by_xpath("//*[@id='lastName']")
+        #
+        # await dom_handler.insert_text(last_name,"гей")
+        #
+        # email = await dom_handler.find_element_by_xpath("//*[@id='userEmail']")
+        #
+        # await dom_handler.insert_text(email,"mihunchik228@mail.ru")
+        #
+        # age = await dom_handler.find_element_by_xpath("//*[@id='age']")
+        #
+        # await dom_handler.insert_text(age,"14")
+        #
+        # salary = await dom_handler.find_element_by_xpath("//*[@id='salary']")
+        #
+        # await dom_handler.insert_text(salary,"6040405969")
+        #
+        # department = await dom_handler.find_element_by_xpath("//*[@id='department']")
+        #
+        # await dom_handler.insert_text(department,"Красивые мальчики")
+        #
+        # submit = await dom_handler.find_element_by_xpath("//button[@id='submit']")
+        #
+        # await dom_handler.click_element(submit)
 
-        book_element = await dom_handler.find_element_by_xpath("//div[contains(text(),\"Book\")]")
+        
 
-        # await dom_handler.scroll_to_element(book_element)
 
-        clicker = await dom_handler.find_element_by_xpath("//*[@id='item-3'][1]")
-        # await dom_handler.scroll_to_element(clicker)
-        # if await dom_handler.is_element_visible(clicker.get("nodeId")):
-        #     logger.error("clicking")
 
-        await dom_handler.click_element(clicker,True)
-        start_time = time.time()
-        print(time.strftime('%H:%M:%S'))
+
+
+
+
+        # await dom_handler.click_element(clicker,True)
+        # start_time = time.time()
+
 
         # response = await asyncio.wait_for(websocket_client.receive_message(), timeout=5)
 
-        add_b = await dom_handler.find_element_by_xpath("//*[@id='addNewRecordButton']")
+        # while True:
+        #     print(time.strftime('%H:%M:%S'))
+        #     await websocket_client.receive_message()
 
-        await dom_handler.click_element(add_b)
         # while True:
         #     response = await websocket_client.receive_message()
         #     print(time.strftime('%H:%M:%S'))
@@ -155,7 +220,9 @@ async def test_websocket_connection():
 
         # Добавляем скрипт, который будет выполняться при загрузке каждой новой страницы
         # await page_handler.add_script_to_evaluate_on_new_document("console.log('Script loaded!');")
+        timerrww = time.time()
 
+        print(timerrww-timerrr)
     except Exception as e:
         print(f"Error: {e}")
 

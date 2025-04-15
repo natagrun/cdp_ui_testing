@@ -87,6 +87,85 @@ class PageHandler(BaseHandler):
 
         print("Page load completed!")
 
+    async def wait_for_page_dom_load(self, timeout=10, inactivity_timeout=7):
+        """
+        Ожидание завершения загрузки страницы с проверкой неактивности.
+
+        Args:
+            timeout: Максимальное общее время ожидания (сек)
+            inactivity_timeout: Время без событий для досрочного завершения (сек)
+        """
+        print(f"Waiting for page load (timeout: {timeout}s, inactivity: {inactivity_timeout}s)...")
+        start_time = time.time()
+        last_activity_time = time.time()
+        active_frames = set()  # Для отслеживания загружающихся фреймов
+        dom_activity = False  # Флаг активности DOM
+
+        while True:
+            current_time = time.time()
+
+            # Проверка общего таймаута
+            if current_time - start_time > timeout:
+                print("Page load timeout reached!")
+                break
+
+            # Проверка таймаута неактивности
+            if current_time - last_activity_time > inactivity_timeout:
+                print(f"No activity for {inactivity_timeout} seconds, assuming page is stable")
+                break
+
+            try:
+                # Уменьшаем timeout для asyncio.wait_for, чтобы чаще проверять условия
+                wait_time = min(1.0, inactivity_timeout - (current_time - last_activity_time))
+                response = await asyncio.wait_for(self.client.receive_message(), timeout=wait_time)
+            except asyncio.TimeoutError:
+                continue  # Просто продолжаем цикл для проверки таймаутов
+
+            response_data = await _parse_response(response)
+            method = response_data.get("method")
+            last_activity_time = time.time()  # Обновляем время последней активности
+
+            # Обработка событий загрузки фреймов
+            if method == "Page.frameStartedLoading":
+                frame_id = response_data["params"]["frameId"]
+                active_frames.add(frame_id)
+                print(f"Frame {frame_id} started loading")
+                dom_activity = True
+
+            elif method == "Page.frameStoppedLoading":
+                frame_id = response_data["params"]["frameId"]
+                if frame_id in active_frames:
+                    active_frames.remove(frame_id)
+                    print(f"Frame {frame_id} stopped loading")
+
+            elif method == "Page.frameDetached":
+                frame_id = response_data["params"]["frameId"]
+                if frame_id in active_frames:
+                    active_frames.remove(frame_id)
+                    print(f"Frame {frame_id} detached")
+
+            # Обработка событий DOM
+            elif method in ["DOM.childNodeInserted", "DOM.childNodeRemoved",
+                            "DOM.attributeModified", "DOM.inlineStyleInvalidated"]:
+                print(f"DOM activity detected: {method}")
+                dom_activity = True
+
+            # События загрузки страницы
+            elif method == "Page.loadEventFired":
+                print("Main page load event fired")
+                if not active_frames:
+                    print("All frames loaded, completing early")
+                    break
+
+        print("Page load check completed!")
+        return {
+            "status": "completed",
+            "active_frames": len(active_frames),
+            "dom_activity": dom_activity,
+            "duration": time.time() - start_time
+        }
+
+
     async def reload(self):
         """Перезагрузить страницу."""
         response = await self.send_request("Page.reload")
