@@ -2,18 +2,13 @@ import asyncio
 import time
 from asyncio import sleep
 
+from pyppeteer.chromium_downloader import download_zip
+
 from new_main.driver.web_socket_client import WebSocketClient
 from new_main.handlers.dom_handler import DOMHandler, logger
 from new_main.handlers.element_handler import ElementHandler
 from new_main.handlers.emulation_handler import EmulationHandler
 from new_main.handlers.page_handler import PageHandler
-
-async def listen_messages(handler):
-    while True:
-        raw_msg = await handler.client.receive_message()
-        await handler.handle_incoming_message(raw_msg)
-
-
 
 async def test_websocket_connection():
     timerrr = time.time()
@@ -43,6 +38,7 @@ async def test_websocket_connection():
         # asyncio.create_task(listen_messages(dom_handler))
         # Активируем протокол Page
         await page_handler.enable_page()
+        # dom_handler.request_id += 1
         # await emu_handler.enable_emulation()
         await dom_handler.enable_dom()
         # Переходим на страницу и ждем ее загрузку
@@ -51,22 +47,32 @@ async def test_websocket_connection():
         # Перезагружаем страницу
         # await page_handler.reload()
 
-        # await page_handler.navigate("https://demoqa.com/text-box")
-        print(time.strftime('%H:%M:%S'))
-        await page_handler.navigate("https://store.steampowered.com/")
-
-        cat = await dom_handler.find_element_by_xpath("//a[contains(text(),'Категории')]")
-        await dom_handler.move_mouse_on_element(cat)
-        await sleep(5)
-        sign = await dom_handler.find_element_by_xpath("//*[contains(text(),'Военная')]")
-        await dom_handler.click_element(sign)
-
+        # await page_handler.navigate("https://store.steampowered.com/")
+        #
+        # cat = await dom_handler.find_element_by_xpath("//a[contains(text(),'Категории')]")
+        # await dom_handler.move_mouse_on_element(cat)
+        #
+        # await page_handler.wait_for_page_dom_load(5,2)
+        # # await asyncio.sleep(3)
+        # sign = await dom_handler.find_element_by_xpath("//*[contains(text(),'Категории')]"
+        #                                                "//ancestor-or-self::*//a[contains(text(),'Рогалик')]")
+        # await dom_handler.click_element(sign)
+        # logo = await dom_handler.find_element_by_xpath("//div[@class='logo']")
+        #
+        # while True:
+        #
+        #     await dom_handler.click_element(logo)
+        #
+        #     await dom_handler.move_mouse_on_element(cat)
+        #     await page_handler.wait_for_page_dom_load(5, 2)
+        #
+        #     await dom_handler.click_element(sign)
         # name = await dom_handler.find_element_by_xpath("//input[@type='text']")
         # # await dom_handler.click_element(name)
         # await dom_handler.insert_text(name,"Миша гей")
 
 
-        #
+
         # sign2 = await dom_handler.find_element_by_xpath("//a[contains(text(),'бесплатный')]")
         # await dom_handler.click_element(sign2)
 
@@ -77,46 +83,6 @@ async def test_websocket_connection():
         #     await websocket_client.receive_message()
 
 
-
-        # element_data = await dom_handler.find_element_by_xpath("//button[@id='doubleClickBtn']")
-        # logger.error(element_data)
-        # await dom_handler.click_element(element_data)
-        # await sleep(3)
-
-        # Получить текст элемента по nodeId
-        # text = await dom_handler.get_text(35)
-        # print(text)
-        # Получить текст элемента по селектору
-        # text = await dom_handler.get_text_by_selector("#doubleClickBtn")
-        # print(text)
-        # element_data = await dom_handler.find_element_by_xpath("//button[@id='doubleClickBtn']")
-        # element_data.__setattr__("nodeId",113)
-        # text = await dom_handler.get_text_by_element(element_data)
-        # print(text)
-        #
-        # element_cock = await dom_handler.find_element_by_xpath("//li[@id='item-0']")
-        # await dom_handler.click_element(element_cock)
-        # Кликаем с ожиданием навигации
-        # success, new_url = await dom_handler.click_element(element_cock, wait_for_navigation=True)
-
-        # if success:
-        #     if new_url:
-        #         print(f"Навигация произошла! Новый URL: {new_url}")
-        #     else:
-        #         print("Клик выполнен, но навигации не было")
-        # else:
-        #     print("Ошибка при клике")
-        # text = await dom_handler.get_text_by_element(element_cock)
-        # print(text)
-        #
-        # element_butt = await dom_handler.find_element_by_xpath("//button[@id='rightClickBtn']")
-        # text = await dom_handler.get_text_by_element(element_butt)
-        # print(text)
-        # await dom_handler.click_element(element_butt)
-        # await sleep(3)
-        # await dom_handler.click_element(element_data)
-        # await sleep(3)
-        # await dom_handler.click_element(element_cock)
 
         # text_input = await dom_handler.find_element_by_xpath("//*[@id='userName']")
         #
@@ -140,21 +106,15 @@ async def test_websocket_connection():
         # attrs = await dom_handler.get_attributes(text_input)
         # if attrs:
         #     print(attrs.get("class"), attrs.get("type"))
-        #
+
         # text_input = await dom_handler.find_element_by_xpath("//*[@id='userEmail']")
         # await dom_handler.focus_on_element(text_input)
         #
-        # clicker = await dom_handler.find_element_by_xpath("//*[@id='item-3'][1]")
-        # await dom_handler.click_element(clicker)
-        #
-        # delete_last_node = await dom_handler.find_element_by_xpath("//span[@title='Delete']")
-        # await dom_handler.click_element(delete_last_node)
-        # await dom_handler.click_element(delete_last_node)
-        # await dom_handler.click_element(delete_last_node)
+
         #
         #
         # add_b = await dom_handler.find_element_by_xpath("//*[@id='addNewRecordButton']")
-        #
+
         # await dom_handler.click_element(add_b)
         #
         #
@@ -185,12 +145,34 @@ async def test_websocket_connection():
         # submit = await dom_handler.find_element_by_xpath("//button[@id='submit']")
         #
         # await dom_handler.click_element(submit)
-
-        
-
-
+        #
+        #
 
 
+
+        await page_handler.navigate("https://demoqa.com/alerts")
+        # await dom_handler.start_dialog_listener(accept=True)
+
+        print(time.strftime('%H:%M:%S'))
+
+
+
+        alert1test = await dom_handler.find_element_by_xpath("//button[@id='alertButton']")
+        # await dom_handler.enable_alert_monitoring()
+        await dom_handler.click_element(alert1test)
+        await dom_handler.is_alert_open()
+        await sleep(3)
+
+        clicker = await dom_handler.find_element_by_xpath("//*[@id='confirmButton']")
+        await dom_handler.click_element(clicker)
+
+        # delete_last_node = await dom_handler.find_element_by_xpath("//span[@title='Delete']")
+        # await dom_handler.click_element(delete_last_node)
+        # await dom_handler.click_element(delete_last_node)
+        # await dom_handler.click_element(delete_last_node)
+        # while True:
+        #     print(time.strftime('%H:%M:%S'))
+        #     await websocket_client.receive_message()
 
 
 
@@ -200,9 +182,7 @@ async def test_websocket_connection():
 
         # response = await asyncio.wait_for(websocket_client.receive_message(), timeout=5)
 
-        # while True:
-        #     print(time.strftime('%H:%M:%S'))
-        #     await websocket_client.receive_message()
+
 
         # while True:
         #     response = await websocket_client.receive_message()

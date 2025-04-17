@@ -87,7 +87,7 @@ class PageHandler(BaseHandler):
 
         print("Page load completed!")
 
-    async def wait_for_page_dom_load(self, timeout=10, inactivity_timeout=7):
+    async def wait_for_page_dom_load(self, timeout=3, inactivity_timeout=0.2):
         """
         Ожидание завершения загрузки страницы с проверкой неактивности.
 

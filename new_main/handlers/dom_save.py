@@ -1,5 +1,7 @@
+import asyncio
 import json
 import logging
+import time
 from typing import Optional, Dict, Union, Tuple, Any
 
 from new_main.handlers.base_handler import BaseHandler
@@ -47,6 +49,84 @@ class DOMHandler(BaseHandler):
         parsed = await _parse_response(response)
         logger.debug(f"DOM disabled: {parsed}")
         return parsed
+
+    async def wait_for_page_dom_load(self, timeout=30, target_class="pulldown_desktop"):
+        """Ожидание завершения загрузки страницы, всех фреймов И появления целевых элементов."""
+        print("Waiting for dom load and target elements...")
+        start_time = time.time()
+        active_frames = set()  # Для отслеживания загружающихся фреймов
+        target_elements_found = False
+
+        while True:
+            # Проверка таймаута
+            if time.time() - start_time > timeout:
+                print("Page dom timeout reached!")
+                break
+
+            try:
+                response = await asyncio.wait_for(self.client.receive_message(), timeout=1)
+            except asyncio.TimeoutError:
+                # Если нет событий, проверяем загрузку фреймов и наличие элементов
+                if not active_frames:
+                    # Проверяем наличие целевых элементов
+                    if not target_elements_found:
+                        try:
+                            # Ищем элементы с нужным классом
+                            search_result = await self.client.send(
+                                "DOM.performSearch",
+                                {"query": f'//*[contains(@class, "{target_class}")]'}
+                            )
+                            if search_result.get("resultCount", 0) > 0:
+                                target_elements_found = True
+                                print(f"Found {search_result['resultCount']} target elements")
+                            else:
+                                print("Target elements not found yet, continuing...")
+                                continue
+                        except Exception as e:
+                            print(f"Error searching for elements: {e}")
+                            continue
+                    else:
+                        print("All frames loaded and target elements found!")
+                        break
+                continue
+
+            response_data = json.loads(response)
+            method = response_data.get("method")
+
+            if method == "DOM.attributeModified":
+                frame_id = response_data["params"]["nodeId"]
+                active_frames.add(frame_id)
+                print(f"node {frame_id} edited parameters")
+
+            elif method == "Page.frameStoppedLoading":
+                frame_id = response_data["params"]["frameId"]
+                if frame_id in active_frames:
+                    active_frames.remove(frame_id)
+                    print(f"Frame {frame_id} stopped loading")
+
+            elif method == "Page.frameDetached":
+                frame_id = response_data["params"]["frameId"]
+                if frame_id in active_frames:
+                    active_frames.remove(frame_id)
+                    print(f"Frame {frame_id} detached")
+
+            elif method == "Page.loadEventFired":
+                print("Main page load event fired")
+
+            # Дополнительно проверяем появление элементов при каждом изменении DOM
+            elif method == "DOM.documentUpdated":
+                try:
+                    search_result = await self.client.send(
+                        "DOM.performSearch",
+                        {"query": f'//*[contains(@class, "{target_class}")]'}
+                    )
+                    if search_result.get("resultCount", 0) > 0:
+                        target_elements_found = True
+                        print(f"Found {search_result['resultCount']} target elements after DOM update")
+                except Exception as e:
+                    print(f"Error searching after DOM update: {e}")
+
+        print("Page load and element check completed!")
 
     async def get_document(self, depth: int = 2) -> Dict:
         """Получить корневой элемент документа."""
@@ -125,7 +205,7 @@ class DOMHandler(BaseHandler):
         print(parsed)
         return parsed.get("result", {}).get("model")
 
-    async def get_search_results(self,search_id):
+    async def get_search_results(self, search_id):
         try:
             params = {
                 "searchId": search_id,
@@ -189,6 +269,23 @@ class DOMHandler(BaseHandler):
         except Exception as e:
             logger.error(f"Failed to get innerHTML: {e}")
             return None
+
+    async def move_mouse_on_element(self, element_data):
+        model = element_data.get("boxModel")
+        if not model:
+            logger.error("No box model data")
+            return False
+
+        x, y = await get_center_coordinates(model)
+
+        await self.send_request("Input.dispatchMouseEvent", {
+            "type": "mouseMoved",
+            "x": x,
+            "y": y,
+            "modifiers": 0,
+            "button": "none",
+            "buttons": 0
+        })
 
     async def move_mouse(self, x, y):
         await self.send_request("Input.dispatchMouseEvent", {
@@ -329,7 +426,7 @@ class DOMHandler(BaseHandler):
             logger.error(f"Failed to get attributes: {e}")
             return None
 
-    async def click_element(self, element_data: Dict, wait_for_navigation=False, timeout=10) -> tuple[bool, Any | None]:
+    async def click_element(self, element_data: Dict, wait_for_navigation=False, timeout=10) -> bool:
         """
         Кликнуть на элемент с опциональным ожиданием навигации.
 
@@ -345,12 +442,12 @@ class DOMHandler(BaseHandler):
         try:
             if not element_data:
                 logger.error("No element data provided")
-                return False, None
+                return False
 
             model = element_data.get("boxModel")
             if not model:
                 logger.error("No box model data")
-                return False, None
+                return False
 
             x, y = await get_center_coordinates(model)
 
@@ -359,67 +456,19 @@ class DOMHandler(BaseHandler):
             #     page_handler = PageHandler(self.client)
             #     await page_handler.setup_page_navigation_listeners()
 
-
             await self.move_mouse(x, y)
             await self.press_mouse(x, y)
             await self.release_mouse(x, y)
 
             logger.error(f"Successfully clicked element at ({x}, {y})")
 
-            # Ожидаем навигацию, если нужно
-            new_url = None
-            if wait_for_navigation:
-                new_url = await page_handler.wait_for_navigation(timeout)
-
-            return True, new_url
+            page_handler = PageHandler(self.client)
+            await page_handler.wait_for_page_dom_load(10, 3)
+            return True
 
         except Exception as e:
             logger.error(f"Error clicking element: {e}")
-            return False, None
-
-
-    # async def insert_text(self, element_data: Dict, text: str) -> bool:
-    #     """
-    #     Вставляет текст в указанный элемент.
-    #
-    #     Args:
-    #         element_data: Данные элемента (содержащие nodeId), полученные из find_element_by_id или find_element_by_xpath
-    #         text: Текст для вставки
-    #
-    #     Returns:
-    #         bool: True если текст успешно вставлен, False в случае ошибки
-    #     """
-    #     try:
-    #         if not element_data or not element_data.get("nodeId"):
-    #             logger.error("No element data or nodeId provided")
-    #             return False
-    #
-    #         node_id = element_data["nodeId"]
-    #
-    #         # Фокусируемся на элементе
-    #         await self.send_request("DOM.focus", {"nodeId": node_id})
-    #
-    #         # Вводим новый текст
-    #         for char in text:
-    #             await self.send_request("Input.dispatchKeyEvent", {
-    #                 "type": "keyDown",
-    #                 "text": char,
-    #                 "unmodifiedText": char,
-    #                 "key": char,
-    #                 "modifiers": 0
-    #             })
-    #             await self.send_request("Input.dispatchKeyEvent", {
-    #                 "type": "keyUp",
-    #                 "key": char,
-    #                 "modifiers": 0
-    #             })
-    #
-    #         logger.debug(f"Successfully inserted text '{text}' into element {node_id}")
-    #         return True
-    #
-    #     except Exception as e:
-    #         logger.error(f"Error inserting text into element: {e}")
-    #         return False
+            return False
 
     async def insert_text(self, element_data: Dict, text: str, timeout: float = 2.0) -> bool:
         """
@@ -441,15 +490,20 @@ class DOMHandler(BaseHandler):
 
         node_id = element_data["nodeId"]
 
+        await self.focus_on_element(element_data)
+
         # 1. Сначала пробуем быстрый JavaScript-метод
         js_success = await self._insert_text_via_javascript(node_id, text)
-        if js_success :
+        if js_success:
             logger.debug(f"Successfully inserted text via JavaScript method")
             return True
 
         # 2. Если JavaScript-метод не сработал, пробуем медленный метод эмуляции ввода
         logger.debug("JavaScript method failed, trying input emulation...")
         input_success = await self._insert_text_via_input(node_id, text)
+
+        page_handler2 = PageHandler(self.client)
+        await page_handler2.wait_for_page_dom_load(2)
         if input_success:
             logger.debug(f"Successfully inserted text via input emulation")
             return True
@@ -583,7 +637,7 @@ class DOMHandler(BaseHandler):
                 return False
 
             x, y = await get_center_coordinates(model)
-            await self.scroll_to_coordinates(x,y)
+            await self.scroll_to_coordinates(x, y)
 
         except Exception as ex:
             logger.error(f"JavaScript scroll fallback also failed: {ex}")
@@ -663,86 +717,49 @@ class DOMHandler(BaseHandler):
             logger.error(f"Error smooth scrolling to element: {e}")
             return False
 
-    # async def is_element_visible(self, node_id: int) -> bool:
-    #     """Проверяет, видим ли элемент (не скрыт CSS и имеет размеры)."""
+    # async def handle_js_dialog(self, accept: bool = True, prompt_text: str = ""):
     #     try:
-    #         # Вариант 1: Через BoxModel (проверка размеров)
-    #         box_model = await self.get_box_model(node_id)
-    #         if not box_model:
-    #             return False
+    #         response = await self.client.receive_message()
+    #         data = json.loads(response)
     #
-    #         width = box_model["content"][2] - box_model["content"][0]
-    #         height = box_model["content"][5] - box_model["content"][1]
-    #         if width <= 0 or height <= 0:
-    #             return False
+    #         if data.get("method") == "Page.javascriptDialogOpening":
+    #             logger.warning(f"JS Dialog appeared: {data['params'].get('message')}")
     #
-    #         # Вариант 2: Через JavaScript (проверка CSS-свойств)
-    #         js_expression = """
-    #             function isVisible(elem) {
-    #                 if (!elem) return false;
-    #                 const style = window.getComputedStyle(elem);
-    #                 return style.display !== 'none' &&
-    #                        style.visibility !== 'hidden' &&
-    #                        style.opacity !== '0' &&
-    #                        elem.offsetWidth > 0 &&
-    #                        elem.offsetHeight > 0;
-    #             }
-    #             isVisible(document.querySelector(`[data-cdp-node-id="${node_id}"]`));
-    #         """
-    #         response = await self.send_request("Runtime.evaluate", {
-    #             "expression": js_expression,
-    #             "returnByValue": True
-    #         })
-    #         parsed = await _parse_response(response)
-    #         return parsed.get("result", {}).get("result", {}).get("value") is True
+    #             await self.send_request("Page.handleJavaScriptDialog", {
+    #                 "accept": accept,
+    #                 "promptText": prompt_text
+    #             })
+    #
+    #             logger.info("Dialog handled")
+    #
     #     except Exception as e:
-    #         logger.error(f"Error checking element visibility: {e}")
-    #         return False
-    #
-    # async def is_element_clickable(self, node_id: int) -> bool:
-    #     """Проверяет, можно ли кликнуть на элемент."""
-    #     try:
-    #         js_expression = f"""
-    #             (function() {{
-    #                 const elem = document.querySelector(`[data-cdp-node-id="{node_id}"]`);
-    #                 if (!elem) return false;
-    #
-    #                 // Проверка на disabled
-    #                 if (elem.disabled) return false;
-    #
-    #                 // Проверка, что элемент не перекрыт
-    #                 const rect = elem.getBoundingClientRect();
-    #                 const centerX = rect.left + rect.width / 2;
-    #                 const centerY = rect.top + rect.height / 2;
-    #                 const topElement = document.elementFromPoint(centerX, centerY);
-    #                 return elem.contains(topElement);
-    #             }})()
-    #         """
-    #         response = await self.send_request("Runtime.evaluate", {
-    #             "expression": js_expression,
-    #             "returnByValue": True
-    #         })
-    #         parsed = await _parse_response(response)
-    #         return parsed.get("result", {}).get("result", {}).get("value") is True
-    #     except Exception as e:
-    #         logger.error(f"Error checking if element is clickable: {e}")
-    #         return False
-    #
-    # async def is_element_in_dom(self, node_id: int) -> bool:
-    #     """Проверяет, существует ли элемент в DOM."""
-    #     try:
-    #         # Вариант 1: Через describeNode (быстро)
-    #         response = await self.send_request("DOM.describeNode", {"nodeId": node_id})
-    #         parsed = await _parse_response(response)
-    #         return not parsed.get("error")
-    #
-    #         # Вариант 2: Через JavaScript (надежнее)
-    #         # response = await self.send_request("Runtime.evaluate", {
-    #         #     "expression": f"!!document.querySelector('[data-cdp-node-id=\"{node_id}\"]')",
-    #         #     "returnByValue": True
-    #         # })
-    #         # parsed = await _parse_response(response)
-    #         # return parsed.get("result", {}).get("result", {}).get("value") is True
-    #     except Exception as e:
-    #         logger.error(f"Error checking if element is in DOM: {e}")
-    #         return False
+    #         logger.error(f"Error handling JS dialog: {e}")
+
+    async def is_alert_open(self) -> bool:
+        try:
+            # Отправляем попытку закрытия диалога
+            await self.send_request("Page.handleJavaScriptDialog", {
+                "accept": True
+            })
+
+            while True:
+                response = await self.client.receive_message()
+                parsed = json.loads(response)
+
+                if parsed.get("id") == response["id"]:
+
+                    # Ответ на наш запрос получен
+                    if "error" in parsed:
+                        error_msg = parsed["error"].get("message", "")
+                        if "No dialog is showing" in error_msg:
+                            return False
+                        else:
+                            logger.error(f"Unexpected CDP error: {error_msg}")
+                            return False
+                    return True  # Значит, алерт был и мы его обработали
+
+        except Exception as e:
+            if "No dialog is showing" in str(e):
+                return False
+            logger.error(f"Error while checking alert: {e}")
+            return False
