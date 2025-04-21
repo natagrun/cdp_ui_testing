@@ -4,7 +4,7 @@ import json
 import aiohttp
 import base64
 
-from new_main.driver.web_socket_client import WebSocketClient
+from main.driver.web_socket_client import WebSocketClient
 
 
 class BaseHandler:

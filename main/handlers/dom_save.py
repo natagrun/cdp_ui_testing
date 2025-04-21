@@ -4,8 +4,8 @@ import logging
 import time
 from typing import Optional, Dict, Union, Tuple, Any
 
-from new_main.handlers.base_handler import BaseHandler
-from new_main.handlers.page_handler import PageHandler
+from main.handlers.base_handler import BaseHandler
+from main.handlers.page_handler import PageHandler
 
 logger = logging.getLogger(__name__)
 

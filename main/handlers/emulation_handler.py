@@ -3,7 +3,7 @@ import json
 import time
 from typing import Optional, Dict, Any
 
-from new_main.handlers.base_handler import BaseHandler
+from main.handlers.base_handler import BaseHandler
 
 
 class EmulationHandler(BaseHandler):

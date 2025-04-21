@@ -1,98 +1,52 @@
-import asyncio
 import json
 import logging
-import time
-from collections import defaultdict
-
+from typing import Union, Dict
 import json
-import asyncio
-from typing import Dict, Any, Optional, List
-from collections import defaultdict
+import logging
+from typing import Union, Dict
 
-import json
-import asyncio
-from collections import defaultdict
-from typing import Dict, Any, Optional, List, Callable, Awaitable
+from main.driver.web_socket_client import WebSocketClient  # подключаем обновлённый WebSocketClient
 
-import json
-import asyncio
-from typing import Optional, Dict, Any
-from collections import defaultdict
+logger = logging.getLogger(__name__)
 
-import websockets
+
+def parse_response(response: Union[str, Dict]) -> Dict:
+    """Парсит ответ CDP (может быть строкой JSON или уже словарём)."""
+    if isinstance(response, str):
+        try:
+            return json.loads(response)
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse CDP response: {e}")
+            return {}
+    return response
 
 
 class BaseHandler:
-    def __init__(self, connection):
-        self.connection = connection
-        self._pending_requests = {}
-        self._event_listeners = defaultdict(list)
-        self._next_id = 1
-        self._message_handler_task = None
+    """Общий класс для обработки запросов с инкрементированием ID."""
 
-    async def start(self):
-        """Запускает обработчик входящих сообщений"""
-        self._message_handler_task = asyncio.create_task(self._handle_messages())
+    def __init__(self, websocket_client: WebSocketClient):
+        self.client = websocket_client
+        self.request_id = 1
 
-    async def stop(self):
-        """Останавливает обработчик сообщений"""
-        if self._message_handler_task:
-            self._message_handler_task.cancel()
-            try:
-                await self._message_handler_task
-            except asyncio.CancelledError:
-                pass
+    def get_next_id(self) -> int:
+        current_id = self.request_id
+        self.request_id += 1
+        return current_id
 
-    async def _handle_messages(self):
-        """Непрерывно обрабатывает входящие сообщения"""
-        while True:
-            try:
-                message = await self.connection.recv()
-                message = json.loads(message)
-                await self._process_message(message)
-            except (websockets.exceptions.ConnectionClosed, json.JSONDecodeError) as e:
-                print(f"Connection error: {e}")
-                break
-
-    async def _process_message(self, message: Dict):
-        """Обрабатывает одно входящее сообщение"""
-        if 'id' in message and message['id'] in self._pending_requests:
-            future = self._pending_requests.pop(message['id'])
-            if 'error' in message:
-                future.set_exception(Exception(message['error']['message']))
-            else:
-                future.set_result(message.get('result'))
-        elif 'method' in message:
-            for callback in self._event_listeners.get(message['method'], []):
-                asyncio.create_task(callback(message.get('params')))
-
-    async def send_command(self, method: str, params: Optional[Dict] = None, timeout: int = 30) -> Any:
-        """Улучшенная отправка команд с обработкой ошибок"""
-        if params is None:
-            params = {}
-
-        if not self.connection or self.connection.closed:
-            raise ConnectionError("WebSocket connection is closed")
-
-        request_id = self._next_id
-        self._next_id += 1
-
-        message = {
-            'id': request_id,
-            'method': method,
-            'params': params
+    async def send_request(self, method: str, params: dict = None) -> Dict:
+        """Отправить запрос в WebSocket и получить распарсенный ответ."""
+        request_id = self.get_next_id()
+        command = {
+            "id": request_id,
+            "method": method,
+            "params": params or {}
         }
+        command_json = json.dumps(command)
+        logger.debug(f"Sending CDP command: {command_json}")
+        await self.client.send_message(command_json)
+        return await self.receive_and_parse()
 
-        future = asyncio.Future()
-        self._pending_requests[request_id] = future
-
-        try:
-            await self.connection.send(json.dumps(message))
-            return await asyncio.wait_for(future, timeout)
-        except asyncio.TimeoutError:
-            del self._pending_requests[request_id]
-            raise TimeoutError(f"Command {method} timed out after {timeout} seconds")
-        except Exception as e:
-            del self._pending_requests[request_id]
-            raise ConnectionError(f"Failed to send command: {str(e)}")
-
+    async def receive_and_parse(self) -> Dict:
+        """Получить сообщение и сразу его распарсить."""
+        response = await self.client.receive_message()
+        return parse_response(response)

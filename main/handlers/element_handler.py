@@ -3,8 +3,8 @@ import json
 from typing import Optional, Dict, List, Union
 import logging
 
-from new_main.handlers.base_handler import BaseHandler
-from new_main.handlers.dom_handler import DOMHandler
+from main.handlers.base_handler import BaseHandler
+from main.handlers.dom_handler import DOMHandler
 
 logger = logging.getLogger(__name__)
 
