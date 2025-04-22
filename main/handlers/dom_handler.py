@@ -1,55 +1,23 @@
 import asyncio
+import datetime
 import json
 import logging
+import os
 import time
-from typing import Optional, Dict, Union, Tuple, Any
+from typing import Optional, Dict, Any
 
 from main.handlers.base_handler import BaseHandler
 from main.handlers.page_handler import PageHandler
+from main.logger import StepLogger
 from main.objects.element import Element
+from main.utils.math import get_center_coordinates
+from main.utils.parser import parse_response
 
 logger = logging.getLogger(__name__)
 
-async def _parse_response(response: Union[str, Dict]) -> Dict:
-    """
-    Обрабатывает ответ, полученный от CDP (Chrome DevTools Protocol).
-    Преобразует строку JSON в словарь, если необходимо.
 
-    :param response: Ответ в виде строки JSON или словаря
-    :return: Словарь, представляющий ответ
-    """
-    if isinstance(response, str):
-        try:
-            logger.debug("Parsing CDP response string")
-            return json.loads(response)
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse CDP response: {e}")
-            return {}
-    return response
-
-
-async def get_center_coordinates(model: Dict) -> Union[Tuple[float, float], bool]:
-    """
-    Вычисляет координаты центра DOM-элемента по его box-модели.
-
-    :param model: Словарь с моделью элемента (box model)
-    :return: Кортеж координат (x, y) или False в случае ошибки
-    """
-    if not model:
-        logger.error("No box model data provided")
-        return False
-
-    try:
-        x = (model["content"][0] + model["content"][2]) / 2
-        y = (model["content"][1] + model["content"][5]) / 2
-        logger.debug(f"Center coordinates calculated: x={x}, y={y}")
-        return x, y
-    except (KeyError, IndexError, TypeError) as e:
-        logger.error(f"Error calculating center coordinates: {e}")
-        return False
-
-
-async def wait_for_condition(check_function, timeout: float = 5.0, poll_frequency: float = 0.1, *args, **kwargs) -> bool:
+async def wait_for_condition(check_function, timeout: float = 5.0, poll_frequency: float = 0.1, *args,
+                             **kwargs) -> bool:
     """
     Ожидает выполнения условия в течение заданного времени с заданной частотой опроса.
 
@@ -86,7 +54,7 @@ class DOMHandler(BaseHandler):
         """
         logger.info("Enabling DOM protocol")
         response = await self.send_request("DOM.enable")
-        parsed = await _parse_response(response)
+        parsed = await parse_response(response)
         logger.debug(f"DOM enabled: {parsed}")
         return parsed
 
@@ -98,11 +66,12 @@ class DOMHandler(BaseHandler):
         """
         logger.info("Disabling DOM protocol")
         response = await self.send_request("DOM.disable")
-        parsed = await _parse_response(response)
+        parsed = await parse_response(response)
         logger.debug(f"DOM disabled: {parsed}")
         return parsed
 
-    async def wait_for_page_dom_load(self, timeout: float = 10.0, inactivity_timeout: float = 3, target_class: str = "pulldown_desktop") -> None:
+    async def wait_for_page_dom_load(self, timeout: float = 10.0, inactivity_timeout: float = 3,
+                                     target_class: str = "pulldown_desktop") -> None:
         """
         Ожидает полной загрузки DOM-дерева и активности страницы.
 
@@ -177,7 +146,7 @@ class DOMHandler(BaseHandler):
     async def get_document(self, depth: int = 2) -> Dict:
         """Получить корневой элемент документа."""
         response = await self.send_request("DOM.getDocument", {"depth": depth})
-        parsed = await _parse_response(response)
+        parsed = await parse_response(response)
         logger.debug(f"Document retrieved: {parsed}")
         return parsed
 
@@ -186,11 +155,11 @@ class DOMHandler(BaseHandler):
             "nodeId": root_node_id,
             "selector": selector
         })
-        parsed_query = await _parse_response(query_response)
+        parsed_query = await parse_response(query_response)
 
         while parsed_query.get("result", {}).get("nodeId") is None:
             query_response = await self.client.receive_message()
-            parsed_query = await _parse_response(query_response)
+            parsed_query = await parse_response(query_response)
             if parsed_query.get("result", {}).get("nodeId") is not None:
                 break
 
@@ -211,7 +180,7 @@ class DOMHandler(BaseHandler):
                 "objectGroup": "highlight"
             })
 
-            object_id = resolved.get("result", {}).get("object",{}).get("objectId")
+            object_id = (await parse_response(resolved)).get("result", {}).get("object", {}).get("objectId")
             if not object_id:
                 logger.error("Failed to resolve node to objectId")
                 return False
@@ -235,7 +204,7 @@ class DOMHandler(BaseHandler):
                 "returnByValue": True
             })
 
-            success = response.get("result", {}).get("value")
+            success = (await parse_response(response)).get("result", {}).get("value")
             logger.info(f"Highlight success: {success}")
             await asyncio.sleep(0.5)
             return success is True
@@ -255,10 +224,10 @@ class DOMHandler(BaseHandler):
             }
 
             search_response = await self.send_request("DOM.performSearch", params)
-            parsed_search = await _parse_response(search_response)
+            parsed_search = await parse_response(search_response)
 
             search_id = parsed_search.get("searchId") or parsed_search.get("result", {}).get("searchId")
-            logger.error(search_id)
+            # logger.error(search_id)
             result_count = parsed_search.get("resultCount") or parsed_search.get("result", {}).get("resultCount", 0)
 
             if not search_id:
@@ -284,15 +253,15 @@ class DOMHandler(BaseHandler):
 
     async def describe_node(self, node_id):
         node_info = await self.send_request("DOM.describeNode", {"nodeId": node_id})
-        parsed_node_info = await _parse_response(node_info)
+        parsed_node_info = await parse_response(node_info)
         parsed_node_info.get("result", {}).get("node")
         return parsed_node_info
 
     async def get_box_model(self, node_id: int) -> Optional[Dict]:
         """Получить модель Box для элемента."""
         response = await self.send_request("DOM.getBoxModel", {"nodeId": node_id})
-        parsed = await _parse_response(response)
-        print(parsed)
+        parsed = await parse_response(response)
+        # print(parsed)
         return parsed.get("result", {}).get("model")
 
     async def get_search_results(self, search_id):
@@ -303,10 +272,10 @@ class DOMHandler(BaseHandler):
                 "toIndex": 1
             }
             search_response = await self.send_request("DOM.getSearchResults", params)
-            parsed_query = await _parse_response(search_response)
+            parsed_query = await parse_response(search_response)
             while parsed_query.get("result", {}).get("nodeIds") is None:
                 query_response = await self.client.receive_message()
-                parsed_query = await _parse_response(query_response)
+                parsed_query = await parse_response(query_response)
                 if parsed_query.get("result", {}).get("nodeIds") is not None:
                     break
 
@@ -318,42 +287,65 @@ class DOMHandler(BaseHandler):
             logger.error(f"Error finding element by search ID: {e}")
             return None
 
-    async def find_element_by_xpath(self, xpath: str) -> Element | None:
+    async def find_element_by_xpath(self, xpath: str, step_logger=None) -> Element | None:
+        """
+        Найти элемент по XPath и вернуть объект Element.
+        Логирует все действия в StepLogger, который создаётся автоматически, если не передан.
 
+        :param xpath: XPath-выражение
+        :param step_logger: (необязательно) StepLogger
+        :return: Element или None
         """
-            Найти элемент по ID и вернуть его данные.
-            Возвращает словарь с nodeId, backendNodeId и другими данными элемента, или None если не найден.
-        """
+        created_logger = False
+        if step_logger is None:
+            name_part = xpath.strip("/").replace("/", "_").replace("@", "").replace("[", "").replace("]", "")
+            logger_name = f"find_xpath_{name_part[:30]}"
+            step_logger = StepLogger(logger_name)
+            created_logger = True
+
         try:
-            document = await self.get_document()
-            # 1. Получаем корневой документ
-            # root_node_id = await self.get_root_node_id()
-            # 2. Ищем элемент по ID через querySelector
+            step_logger.log_step("Начат поиск элемента по XPath", True, xpath)
 
+            document = await self.get_document()
             search_id = await self.perform_search(xpath)
-            print(search_id)
-            logger.error(search_id)
             node_id = await self.get_search_results(search_id)
+
+            if not node_id:
+                step_logger.log_step("Элемент не найден", False, xpath)
+                return None
 
             node = await self.describe_node(node_id)
             box_model = await self.get_box_model(node_id)
-            # await self.highlight_element_border(node_id,color="green")
-            return Element(
+
+            element = Element(
                 node_id=node_id,
                 backend_node_id=node.get("backendNodeId"),
                 node_name=node.get("nodeName"),
                 box_model=box_model,
-                document_url=document.get("result", {}).get("documentURL")
+                document_url=document.get("result", {}).get("documentURL"),
+                dom_handler=self,
+                step_logger=step_logger
             )
 
+            step_logger.log_step("Элемент найден", True, str(element))
+            return element
+
         except Exception as e:
-            logger.error(f"Error finding element by ID: {e}")
+            logger.error(f"Error finding element by XPath: {e}")
+            step_logger.log_step("Ошибка при поиске элемента", False, str(e))
             return None
+
+        finally:
+            if created_logger:
+                timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+                os.makedirs("logs", exist_ok=True)
+                step_logger.save_to_file(f"logs/xpath_{timestamp}.json")
+
 
     async def focus_on_element(self, element):
         try:
             response = await self.send_request("DOM.focus", {"nodeId": element.node_id})
-            parsed = await _parse_response(response)
+            parsed = await parse_response(response)
             print(parsed)
             return parsed.get("result", {}).get("innerHTML")
         except Exception as e:
@@ -410,7 +402,6 @@ class DOMHandler(BaseHandler):
             "clickCount": 1
         })
 
-
     async def get_outer_html(self, node_id: int) -> Optional[str]:
         """
         Получить outerHTML элемента по его nodeId.
@@ -423,7 +414,7 @@ class DOMHandler(BaseHandler):
         """
         try:
             response = await self.send_request("DOM.getOuterHTML", {"nodeId": node_id})
-            parsed = await _parse_response(response)
+            parsed = await parse_response(response)
             return parsed.get("result", {}).get("outerHTML")
         except Exception as e:
             logger.error(f"Failed to get outerHTML: {e}")
@@ -441,7 +432,7 @@ class DOMHandler(BaseHandler):
         """
         try:
             response = await self.send_request("DOM.getInnerHTML", {"nodeId": node_id})
-            parsed = await _parse_response(response)
+            parsed = await parse_response(response)
             return parsed.get("result", {}).get("innerHTML")
         except Exception as e:
             logger.error(f"Failed to get innerHTML: {e}")
@@ -472,7 +463,6 @@ class DOMHandler(BaseHandler):
             # Получаем outerHTML элемента
             outer_html = await self.get_outer_html(node_id)
 
-
             if not outer_html:
                 return None
 
@@ -482,7 +472,7 @@ class DOMHandler(BaseHandler):
                 "returnByValue": True
             })
 
-            parsed = await _parse_response(response)
+            parsed = await parse_response(response)
             return parsed.get("result", {}).get("result", {}).get("value")
         except Exception as e:
             logger.error(f"Failed to get text content: {e}")
@@ -501,7 +491,7 @@ class DOMHandler(BaseHandler):
                 "returnByValue": True
             })
 
-            parsed = await _parse_response(response)
+            parsed = await parse_response(response)
             return parsed.get("result", {}).get("result", {}).get("value")
         except Exception as e:
             logger.error(f"Failed to get text content: {e}")
@@ -522,7 +512,7 @@ class DOMHandler(BaseHandler):
         try:
 
             response = await self.send_request("DOM.getAttributes", {"nodeId": element.node_id})
-            parsed = await _parse_response(response)
+            parsed = await parse_response(response)
             attributes = parsed.get("result", {}).get("attributes", [])
 
             # Преобразуем список [name1, value1, name2, value2, ...] в словарь
@@ -542,6 +532,7 @@ class DOMHandler(BaseHandler):
 
         Returns:
             Tuple[bool, Optional[str]]: (Успех клика, URL новой страницы или None)
+            :param element:
         """
         global page_handler
         try:
@@ -569,7 +560,7 @@ class DOMHandler(BaseHandler):
             await self.press_mouse(x, y)
             await self.release_mouse(x, y)
 
-            logger.error(f"Successfully clicked element at ({x}, {y})")
+            # logger.error(f"Successfully clicked element at ({x}, {y})")
 
             page_handler = PageHandler(self.client)
             await page_handler.wait_for_page_dom_load(10, 3)
@@ -662,7 +653,6 @@ class DOMHandler(BaseHandler):
             logger.error(f"JavaScript insert text failed: {e}")
             return False
 
-
     async def _insert_text_via_input(self, node_id: int, text: str) -> bool:
         """Вставляет текст через эмуляцию ввода с клавиатуры"""
         try:
@@ -737,7 +727,6 @@ class DOMHandler(BaseHandler):
             logger.error(f"Failed to clear field: {e}")
             return False
 
-
     async def scroll_to_coordinates(self, x: int, y: int) -> bool:
         """
         Прокручивает страницу к указанным координатам.
@@ -754,7 +743,7 @@ class DOMHandler(BaseHandler):
                 "expression": f"window.scrollTo({x}, {y})",
                 "awaitPromise": False
             })
-            parsed = await _parse_response(response)
+            parsed = await parse_response(response)
             if parsed.get("exceptionDetails"):
                 logger.error(f"Scroll failed: {parsed.get('exceptionDetails')}")
                 return False
@@ -810,7 +799,7 @@ class DOMHandler(BaseHandler):
                 "yDistance": -delta_y,  # Отрицательное значение потому что в CDP направление обратное
                 "speed": 1000
             })
-            parsed = await _parse_response(response)
+            parsed = await parse_response(response)
             if not parsed.get("error"):
                 return True
 
@@ -819,7 +808,7 @@ class DOMHandler(BaseHandler):
                 "expression": f"window.scrollBy({delta_x}, {delta_y})",
                 "awaitPromise": False
             })
-            parsed = await _parse_response(response)
+            parsed = await parse_response(response)
             return not parsed.get("exceptionDetails")
         except Exception as e:
             logger.error(f"Error scrolling by delta: {e}")
@@ -858,7 +847,7 @@ class DOMHandler(BaseHandler):
                 "awaitPromise": True,
                 "returnByValue": True
             })
-            parsed = await _parse_response(response)
+            parsed = await parse_response(response)
             return parsed.get("result", {}).get("result", {}).get("value") is True
         except Exception as e:
             logger.error(f"Error smooth scrolling to element: {e}")
@@ -874,7 +863,7 @@ class DOMHandler(BaseHandler):
             await self.client.receive_message()
             await self.client.receive_message()
             pa = PageHandler(self.client)
-            await pa.wait_for_page_dom_load(5,2)
+            await pa.wait_for_page_dom_load(5, 2)
             return True  # Алерт был и мы его обработали
 
         except Exception as e:
@@ -883,57 +872,89 @@ class DOMHandler(BaseHandler):
             logger.error(f"Error while checking alert: {e}")
             return False
 
+
     async def is_element_visible(self, node_id: int) -> bool:
         """
-        Проверяет, видим ли элемент в DOM (display, visibility, opacity).
+        Проверяет, видим ли элемент (по стилям display, visibility, opacity) через objectId.
+
+        :param node_id: Идентификатор DOM-узла
+        :return: True, если элемент видим
         """
+        logger.info(f"Checking visibility of node {node_id}")
         try:
-            response = await self.send_request("Runtime.evaluate", {
-                "expression": f"""
-                    (function() {{
-                        const el = document.querySelector('[data-cdp-node-id=\"{node_id}\"]');
-                        if (!el) return false;
-                        const style = window.getComputedStyle(el);
-                        return (
-                            style && 
-                            style.display !== 'none' &&
-                            style.visibility !== 'hidden' &&
-                            style.opacity !== '0'
-                        );
-                    }})()
-                """,
+            resolved = await self.send_request("DOM.resolveNode", {"nodeId": node_id})
+            object_id = (await parse_response(resolved)).get("result", {}).get("object", {}).get("objectId")
+
+            if not object_id:
+                logger.error("Failed to resolve objectId for visibility check")
+                return False
+
+            response = await self.send_request("Runtime.callFunctionOn", {
+                "objectId": object_id,
+                "functionDeclaration": """
+                        function() {
+                            try {
+                                const style = window.getComputedStyle(this);
+                                return (
+                                    style &&
+                                    style.display !== 'none' &&
+                                    style.visibility !== 'hidden' &&
+                                    parseFloat(style.opacity) > 0
+                                );
+                            } catch (e) {
+                                return false;
+                            }
+                        }
+                    """,
                 "returnByValue": True
             })
-            return response.get("result", {}).get("result", {}).get("value") is True
+            result = (await parse_response(response)).get("result", {}).get("result", {}).get("value")
+            return result is True
         except Exception as e:
-            logger.error(f"Error checking visibility: {e}")
+            logger.error(f"Error checking element visibility: {e}")
             return False
 
     async def is_element_clickable(self, node_id: int) -> bool:
         """
-        Проверяет, кликабелен ли элемент (видим и не заблокирован).
+        Проверяет, кликабелен ли элемент (видим, не заблокирован, имеет размеры) через objectId.
+
+        :param node_id: Идентификатор DOM-узла
+        :return: True, если элемент кликабелен
         """
+        logger.info(f"Checking clickability of node {node_id}")
         try:
-            response = await self.send_request("Runtime.evaluate", {
-                "expression": f"""
-                    (function() {{
-                        const el = document.querySelector('[data-cdp-node-id=\"{node_id}\"]');
-                        if (!el) return false;
-                        const style = window.getComputedStyle(el);
-                        const rect = el.getBoundingClientRect();
-                        return (
-                            style.display !== 'none' &&
-                            style.visibility !== 'hidden' &&
-                            style.opacity !== '0' &&
-                            !el.disabled &&
-                            rect.width > 0 &&
-                            rect.height > 0
-                        );
-                    }})()
-                """,
+            resolved = await self.send_request("DOM.resolveNode", {"nodeId": node_id})
+            object_id = (await parse_response(resolved)).get("result", {}).get("object", {}).get("objectId")
+
+            if not object_id:
+                logger.error("Failed to resolve objectId for clickability check")
+                return False
+
+            response = await self.send_request("Runtime.callFunctionOn", {
+                "objectId": object_id,
+                "functionDeclaration": """
+                        function() {
+                            try {
+                                const style = window.getComputedStyle(this);
+                                const rect = this.getBoundingClientRect();
+                                return (
+                                    style.display !== 'none' &&
+                                    style.visibility !== 'hidden' &&
+                                    parseFloat(style.opacity) > 0 &&
+                                    !this.disabled &&
+                                    rect.width > 0 &&
+                                    rect.height > 0
+                                );
+                            } catch (e) {
+                                return false;
+                            }
+                        }
+                    """,
                 "returnByValue": True
             })
-            return response.get("result", {}).get("result", {}).get("value") is True
+
+            result = (await parse_response(response)).get("result", {}).get("result", {}).get("value")
+            return result is True
         except Exception as e:
-            logger.error(f"Error checking clickability: {e}")
+            logger.error(f"Error checking element clickability: {e}")
             return False

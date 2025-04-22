@@ -1,7 +1,9 @@
+import json
 import logging
 
 from main.driver.web_socket_client import WebSocketClient
 from main.handlers.page_handler import PageHandler
+from main.utils.parser import parse_response
 
 logger = logging.getLogger(__name__)
 from typing import Optional, List
@@ -18,13 +20,19 @@ class NavigationHandler(BaseHandler):
         """Получить список истории навигации страницы."""
         try:
             response = await self.send_request("Page.getNavigationHistory")
-            entries = response.get("result", {}).get("entries", [])
-            self.current_index = response.get("result", {}).get("currentIndex", -1)
+            parsed= await parse_response(response)
+            entries = parsed.get("result", {}).get("entries", [])
+            self.current_index = parsed.get("result", {}).get("currentIndex", -1)
             logger.info(f"Found {len(entries)} entries in navigation history.")
             return entries
         except Exception as e:
             logger.error(f"Failed to get navigation history: {e}")
             return None
+
+    async def get_current_url(self):
+        """Возвращает текущий URL страницы."""
+        entrues = await self.get_navigation_history()
+        return entrues[-1].get("url")
 
     async def navigate_back(self) -> bool:
         """Переход на предыдущую страницу в истории."""

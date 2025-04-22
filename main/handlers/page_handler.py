@@ -3,118 +3,95 @@ import base64
 import json
 import logging
 import time
-from typing import Dict, Union
 
 from main.handlers.base_handler import BaseHandler
+from main.utils.parser import parse_response
 
 logger = logging.getLogger(__name__)
 
-async def _parse_response(response: Union[str, Dict]) -> Dict:
-    """Парсит ответ CDP (может быть строкой JSON или уже словарём)."""
-    if isinstance(response, str):
-        try:
-            return json.loads(response)
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse CDP response: {e}")
-            return {}
-    return response
-
 
 class PageHandler(BaseHandler):
-    """Обработчик команд для страницы."""
+    """
+    Обработчик команд протокола Page в Chrome DevTools Protocol.
+    Предоставляет методы навигации, ожидания загрузки, получения метрик и скриншотов.
+    """
 
     async def enable_page(self):
-        """Активировать протокол Page."""
+        """
+        Активирует протокол Page.
+
+        :return: Ответ CDP в формате словаря
+        """
+        logger.info("Enabling Page domain")
         response = await self.send_request("Page.enable")
-        print(f"Response from Page.enable: {response}")
+        logger.debug(f"Page.enable response: {response}")
         return response
 
     async def navigate(self, url: str):
-        """Перейти по указанному URL и дождаться полной загрузки страницы."""
-        params = {"url": url}
-        response = await self.send_request("Page.navigate", params)
-        print(f"Page navigation response: {response}")
+        """
+        Переходит по указанному URL и ожидает загрузки страницы.
 
-        # Ожидаем завершения загрузки страницы
+        :param url: Целевой URL
+        :return: Ответ CDP от команды navigate
+        """
+        logger.info(f"Navigating to {url}")
+        response = await self.send_request("Page.navigate", {"url": url})
+        logger.debug(f"Page.navigate response: {response}")
         await self.wait_for_page_load()
-
         return response
 
     async def wait_for_page_load(self, timeout=30):
         """
-        Ожидает полной загрузки страницы и фреймов, основываясь на событиях CDP.
-        Более устойчивая версия с логированием и защитой от сбоев.
+        Ожидает полной загрузки страницы по событиям CDP.
+
+        :param timeout: Максимальное время ожидания (в секундах)
         """
-        logger.info("Waiting for page load...")
+        logger.info("Waiting for full page load...")
         start_time = time.time()
         active_frames = set()
         load_event_fired = False
 
         while True:
-            elapsed = time.time() - start_time
-            if elapsed > timeout:
-                logger.warning("Page load timeout reached!")
+            if time.time() - start_time > timeout:
+                logger.warning("Timeout while waiting for page load")
                 break
 
             try:
                 response = await asyncio.wait_for(self.client.receive_message(), timeout=1)
-                if response is None:
-                    logger.warning("Received empty response")
+                if not response:
                     continue
-
                 response_data = json.loads(response)
             except asyncio.TimeoutError:
                 if load_event_fired and not active_frames:
-                    logger.info("No active frames and load event fired — assuming page loaded.")
+                    logger.info("Load event fired and no active frames — assuming page loaded")
                     break
                 continue
-            except json.JSONDecodeError as e:
-                logger.error(f"Failed to decode response: {e}")
-                continue
             except Exception as e:
-                logger.exception(f"Unexpected error while receiving message: {e}")
-                break
+                logger.exception(f"Error while receiving page load message: {e}")
+                continue
 
             method = response_data.get("method")
             params = response_data.get("params", {})
+            frame_id = params.get("frameId")
 
-            if method == "Page.frameStartedLoading":
-                frame_id = params.get("frameId")
-                if frame_id:
-                    active_frames.add(frame_id)
-                    logger.debug(f"Frame {frame_id} started loading")
-
-            elif method == "Page.frameStoppedLoading":
-                frame_id = params.get("frameId")
-                if frame_id:
-                    active_frames.discard(frame_id)
-                    logger.debug(f"Frame {frame_id} stopped loading")
-
-            elif method == "Page.frameDetached":
-                frame_id = params.get("frameId")
-                if frame_id:
-                    active_frames.discard(frame_id)
-                    logger.debug(f"Frame {frame_id} detached")
-
+            if method == "Page.frameStartedLoading" and frame_id:
+                active_frames.add(frame_id)
+            elif method in ["Page.frameStoppedLoading", "Page.frameDetached"] and frame_id:
+                active_frames.discard(frame_id)
             elif method == "Page.loadEventFired":
                 load_event_fired = True
-                logger.debug("Main page load event fired")
 
-            if load_event_fired and not active_frames:
-                logger.info("All frames loaded and load event fired.")
-                break
-
-        logger.info("Page load completed.")
+        logger.info("Page load completed")
 
     async def wait_for_page_dom_load(self, timeout=3, inactivity_timeout=0.2):
         """
-        Ожидание завершения загрузки страницы с отслеживанием DOM-активности и фреймов.
+        Ожидает стабилизации DOM-дерева страницы по активности и фреймам.
 
-        Args:
-            timeout: Максимальное время ожидания (сек)
-            inactivity_timeout: Время без событий для досрочного завершения (сек)
+        :param timeout: Общее время ожидания
+        :param inactivity_timeout: Период неактивности для завершения ожидания
+        :return: Словарь с результатами ожидания
         """
-        logger.info(f"Waiting for DOM stability (timeout={timeout}s, inactivity={inactivity_timeout}s)...")
+        logger.info("Waiting for DOM stability...")
         start_time = time.time()
         last_activity = time.time()
         active_frames = set()
@@ -123,15 +100,11 @@ class PageHandler(BaseHandler):
 
         while True:
             now = time.time()
-
-            # Общий таймаут
             if now - start_time > timeout:
-                logger.warning("DOM wait timeout reached.")
+                logger.warning("Timeout reached while waiting for DOM")
                 break
-
-            # Неактивность — если давно не было событий
             if now - last_activity > inactivity_timeout:
-                logger.info("No activity detected. Assuming page is stable.")
+                logger.info("DOM inactivity period reached — assuming stable DOM")
                 break
 
             try:
@@ -139,50 +112,32 @@ class PageHandler(BaseHandler):
                 response = await asyncio.wait_for(self.client.receive_message(), timeout=wait_time)
                 if not response:
                     continue
-
                 data = json.loads(response)
                 method = data.get("method")
                 params = data.get("params", {})
-                last_activity = time.time()  # Обновляем метку активности
+                last_activity = time.time()
+
+                frame_id = params.get("frameId")
+                if method == "Page.frameStartedLoading" and frame_id:
+                    active_frames.add(frame_id)
+                    dom_activity_detected = True
+                elif method in ["Page.frameStoppedLoading", "Page.frameDetached"] and frame_id:
+                    active_frames.discard(frame_id)
+                elif method in ["DOM.childNodeInserted", "DOM.childNodeRemoved", "DOM.attributeModified",
+                                "DOM.inlineStyleInvalidated"]:
+                    dom_activity_detected = True
+                elif method == "Page.loadEventFired":
+                    load_event_fired = True
+                    if not active_frames:
+                        break
 
             except asyncio.TimeoutError:
                 continue
             except Exception as e:
-                logger.error(f"Error processing message: {e}")
-                continue
-
-            # === События загрузки фреймов ===
-            frame_id = params.get("frameId")
-            if method == "Page.frameStartedLoading" and frame_id:
-                active_frames.add(frame_id)
-                logger.debug(f"Frame {frame_id} started loading")
-                dom_activity_detected = True
-
-            elif method == "Page.frameStoppedLoading" and frame_id:
-                active_frames.discard(frame_id)
-                logger.debug(f"Frame {frame_id} stopped loading")
-
-            elif method == "Page.frameDetached" and frame_id:
-                active_frames.discard(frame_id)
-                logger.debug(f"Frame {frame_id} detached")
-
-            # === DOM-активность ===
-            elif method in ["DOM.childNodeInserted", "DOM.childNodeRemoved",
-                            "DOM.attributeModified", "DOM.inlineStyleInvalidated"]:
-                logger.debug(f"DOM activity detected: {method}")
-                dom_activity_detected = True
-
-            # === Загрузка страницы ===
-            elif method == "Page.loadEventFired":
-                logger.debug("Page load event fired")
-                load_event_fired = True
-                if not active_frames:
-                    logger.debug("All frames loaded after load event — early exit")
-                    break
+                logger.error(f"Error while checking DOM activity: {e}")
 
         duration = time.time() - start_time
         logger.info(f"DOM load completed in {duration:.2f}s")
-
         return {
             "status": "completed",
             "active_frames": len(active_frames),
@@ -191,102 +146,114 @@ class PageHandler(BaseHandler):
             "duration": duration
         }
 
-
     async def reload(self):
-        """Перезагрузить страницу."""
+        """
+        Перезагружает текущую страницу и ожидает загрузку.
+
+        :return: Ответ CDP от Page.reload
+        """
+        logger.info("Reloading page...")
         response = await self.send_request("Page.reload")
-        print(f"Page reload response: {response}")
         await self.wait_for_page_load()
         return response
 
     async def capture_screenshot(self, format="png", quality=20, clip=None):
-        """Сделать скриншот страницы."""
-        # await sleep(5)
+        """
+        Делает скриншот текущей страницы и сохраняет в файл.
+
+        :param format: Формат изображения (по умолчанию png)
+        :param quality: Качество (для jpeg)
+        :param clip: Область для скриншота
+        :return: Ответ CDP от captureScreenshot
+        """
+        logger.info("Capturing screenshot...")
         params = {"format": format, "quality": quality}
         if clip:
             params["clip"] = clip
 
         response = await self.send_request("Page.captureScreenshot", params)
-        print(f"Page screenshot captured: {response}")
+        parsed = await parse_response(response)
+        screenshot_data = parsed.get("result", {}).get("data")
 
-        # Если ответ содержит изображение, преобразуем его в base64
-        screenshot_data = json.loads(response).get("result", {}).get("data")
         if screenshot_data:
-            # Декодируем изображение в base64
             img_data = base64.b64decode(screenshot_data)
             with open("../main/screenshot.png", "wb") as file:
                 file.write(img_data)
-            print("Screenshot saved as screenshot.png")
-        # await sleep(5)
+            logger.info("Screenshot saved to ../main/screenshot.png")
+
         return response
 
     async def stop_loading(self):
-        """Остановить загрузку страницы."""
+        """
+        Прерывает текущую загрузку страницы.
+
+        :return: Ответ CDP от Page.stopLoading
+        """
+        logger.info("Stopping page load")
         response = await self.send_request("Page.stopLoading")
-        print(f"Page stop loading response: {response}")
         return response
 
     async def add_script_to_evaluate_on_new_document(self, script: str):
-        """Добавить скрипт для выполнения на каждой новой загружаемой странице."""
+        """
+        Добавляет скрипт, который будет выполняться на каждой новой странице.
+
+        :param script: JS-код для выполнения
+        :return: Ответ CDP от Page.addScriptToEvaluateOnNewDocument
+        """
+        logger.info("Adding script to evaluate on new document")
         params = {"source": script}
         response = await self.send_request("Page.addScriptToEvaluateOnNewDocument", params)
-        print(f"Script added to evaluate on new document: {response}")
         return response
 
     async def get_layout_metrics(self):
+        """
+        Получает информацию о текущей раскладке страницы.
+
+        :return: Ответ CDP от Page.getLayoutMetrics
+        """
+        logger.info("Getting layout metrics")
         response = await self.send_request("Page.getLayoutMetrics")
-        print(f"Layout metrics: {response}")
         return response
 
     async def setup_page_navigation_listeners(self):
-        """Включает отслеживание навигации и новых вкладок."""
-        # Включаем необходимые домены
-        # await self.send_request("Page.enable")
+        """
+        Включает отслеживание появления новых целей/вкладок.
+
+        :return: None
+        """
+        logger.info("Setting up navigation listeners")
         response = await self.send_request("Target.setDiscoverTargets", {"discover": True})
-        parsed_query = await _parse_response(response)
-        logger.error(parsed_query)
+        logger.debug(f"Target discovery response: {response}")
         while True:
             query_response = await self.client.receive_message()
-            parsed_query = await _parse_response(query_response)
-            logger.error(parsed_query)
-            # if parsed_query.get("id") is not None:
-            #     break
-
+            parsed_query = await parse_response(query_response)
+            logger.debug(f"Target event received: {parsed_query}")
 
     async def wait_for_navigation(self, timeout=10):
         """
-        Ожидает навигации на новой странице.
-        Возвращает URL новой страницы или None, если навигации не было.
-        """
-        try:
-            # Получаем текущий URL
-            original_url = await self.get_current_url()
+        Ожидает навигации и возвращает новый URL.
 
-            # Ожидаем событие навигации
-            navigation_event = await asyncio.wait_for(
-                self._wait_for_navigation_event(),
-                timeout=timeout
-            )
+        :param timeout: Таймаут в секундах
+        :return: URL новой страницы или None
+        """
+        logger.info("Waiting for navigation event")
+        try:
+            navigation_event = await asyncio.wait_for(self._wait_for_navigation_event(), timeout=timeout)
             return navigation_event
         except asyncio.TimeoutError:
+            logger.warning("Navigation timeout")
             return None
 
     async def _wait_for_navigation_event(self):
         """
-        Внутренний метод для ожидания событий навигации.
+        Внутренний метод ожидания события перехода по ссылке.
+
+        :return: URL страницы
         """
         while True:
             response = await self.client.receive_message()
-            data = json.loads(response)
-
-            # Проверяем события навигации
+            data = await parse_response(response)
             if data.get("method") == "Page.frameNavigated":
                 return data["params"]["frame"]["url"]
             elif data.get("method") == "Target.attachedToTarget":
                 return data["params"]["targetInfo"]["url"]
-
-    async def get_current_url(self):
-        """Возвращает текущий URL страницы."""
-        response = await self.send_request("Page.getNavigationHistory")
-        data = json.loads(response)
-        return data["result"]["entries"][-1]["url"]
