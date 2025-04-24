@@ -1,14 +1,12 @@
 import asyncio
-import datetime
 import json
 import logging
-import os
 import time
 from typing import Optional, Dict, Any
 
 from main.handlers.base_handler import BaseHandler
 from main.handlers.page_handler import PageHandler
-from main.logger import StepLogger
+from main.logging.logger import StepLogger
 from main.objects.element import Element
 from main.utils.math import get_center_coordinates
 from main.utils.parser import parse_response
@@ -41,6 +39,7 @@ async def wait_for_condition(check_function, timeout: float = 5.0, poll_frequenc
 
 
 class DOMHandler(BaseHandler):
+
     """
     Класс-обработчик DOM, реализующий взаимодействие с Chrome DevTools Protocol.
     Предоставляет методы для получения, поиска и взаимодействия с DOM-элементами.
@@ -334,13 +333,6 @@ class DOMHandler(BaseHandler):
             logger.error(f"Error finding element by XPath: {e}")
             step_logger.log_step("Ошибка при поиске элемента", False, str(e))
             return None
-
-        finally:
-            if created_logger:
-                timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-                os.makedirs("logs", exist_ok=True)
-                step_logger.save_to_file(f"logs/xpath_{timestamp}.json")
-
 
     async def focus_on_element(self, element):
         try:
