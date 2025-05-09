@@ -1,10 +1,4 @@
 import json
-import logging
-
-from main.driver.web_socket_client import WebSocketClient  # подключаем обновлённый WebSocketClient
-
-logger = logging.getLogger(__name__)
-
 
 class BaseHandler:
     """
@@ -12,7 +6,7 @@ class BaseHandler:
     через WebSocket-клиент с автоинкрементом идентификаторов запросов.
     """
 
-    def __init__(self, websocket_client: WebSocketClient):
+    def __init__(self, websocket_client, logger):
         """
         Инициализирует объект BaseHandler с привязанным WebSocket-клиентом.
 
@@ -21,6 +15,7 @@ class BaseHandler:
 
         self.client = websocket_client
         self.request_id = 1
+        self.log = logger
 
     def get_next_id(self) -> int:
         """
@@ -47,6 +42,6 @@ class BaseHandler:
             "params": params or {}
         }
         command_json = json.dumps(command)
-        logger.debug(f"Sending CDP command: {command_json}")
+        self.log.debug(f"Отправляем команду: {command_json}")
         await self.client.send_message(command_json)
         return await self.client.receive_message()

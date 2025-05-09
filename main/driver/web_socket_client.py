@@ -1,120 +1,52 @@
 import asyncio
-from typing import Any
-import aiohttp
-import websockets
 import logging
+from typing import *
 
-# Настройка логгера
-logger = logging.getLogger(__name__)
-
-async def get_websocket_url() -> Any | None:
-    """
-    Получить WebSocket URL первой открытой страницы из DevTools.
-
-    :return: Строка с WebSocket URL или None в случае ошибки
-    """
-    devtools_url = "http://localhost:9222/json"
-    logger.info("Попытка получения WebSocket URL из DevTools")
-
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(devtools_url) as response:
-                logger.debug(f"Ответ DevTools: статус {response.status}")
-
-                if response.status != 200:
-                    logger.error("Не удалось получить список страниц из DevTools")
-                    return None
-
-                pages = await response.json()
-
-                if not pages:
-                    logger.warning("DevTools не вернул ни одной страницы")
-                    return None
-
-                first_page = pages[0]
-                url = first_page.get("webSocketDebuggerUrl", "")
-
-                if not url:
-                    logger.warning("URL WebSocket отсутствует в ответе DevTools")
-                    return None
-
-                logger.info(f"Выбран WebSocket URL: {url}")
-                return url
-
-    except Exception as e:
-        logger.error(f"Ошибка при получении WebSocket URL: {e}")
-        return None
-
+import websockets
 
 class WebSocketClient:
     """
     Класс для работы с WebSocket-соединением.
     """
-
-    def __init__(self, url: str = None):
-        """
-        Инициализация клиента WebSocket.
-
-        :param url: Адрес WebSocket-соединения
-        """
+    def __init__(self, url: str, connect_timeout: int, retries: int, logger):
         self.url = url
         self.websocket = None
-        logger.debug(f"Создан экземпляр WebSocketClient с URL: {url}")
+        self.retries = retries
+        self.connect_timeout = connect_timeout
+        self.log = logger
+        self.log.debug(f"Создан WebSocketClient(url={url}, retries={retries}, timeout={connect_timeout})")
 
-    async def connect(self, retries: int = 3):
-        """
-        Установить соединение с WebSocket с повтором при ошибке.
-
-        :param retries: Количество попыток
-        :raises ConnectionError: Если соединение не удалось после всех попыток
-        """
-        logger.info(f"Подключение к WebSocket с количеством попыток: {retries}")
-        for attempt in range(1, retries + 1):
+    async def connect(self) -> None:
+        self.log.info(f"Подключение к WebSocket {self.url} (попыток: {self.retries})")
+        for attempt in range(1, self.retries + 1):
             try:
-                self.websocket = await websockets.connect(self.url)
-                logger.info("Соединение с WebSocket установлено")
+                self.websocket = await websockets.connect(self.url, timeout=self.connect_timeout)
+                self.log.info("Соединение с WebSocket установлено")
                 return
             except Exception as e:
-                logger.warning(f"Попытка {attempt} подключения к WebSocket не удалась: {e}")
+                self.log.warning(f"Попытка {attempt} не удалась: {e}")
                 await asyncio.sleep(1)
+        self.log.error("Не удалось подключиться к WebSocket после всех попыток")
+        raise ConnectionError("WebSocket connect failed")
 
-        logger.error("Не удалось установить соединение с WebSocket после всех попыток")
-        raise ConnectionError("Не удалось подключиться к WebSocket")
-
-    async def send_message(self, message: str):
-        """
-        Отправка сообщения по WebSocket.
-
-        :param message: Строка с сообщением
-        """
+    async def send_message(self, message: str) -> None:
         if self.websocket:
-            logger.debug(f"Отправка сообщения: {message}")
-            # print(message)
+            self.log.debug(f"Отправка сообщения: {message}")
             await self.websocket.send(message)
         else:
-            logger.error("Невозможно отправить сообщение — WebSocket не подключён")
+            self.log.error("WebSocket не подключён, отправка невозможна")
 
-    async def receive_message(self):
-        """
-        Получение сообщения из WebSocket.
-
-        :return: Строка с полученным сообщением или None при ошибке
-        """
+    async def receive_message(self) -> Optional[str]:
         try:
             message = await self.websocket.recv()
-            logger.debug(f"Получено сообщение из WebSocket: {message}")
-            # print(message)
+            self.log.debug(f"Получено сообщение: {message}")
             return message
         except Exception as e:
-            logger.error(f"Ошибка при получении сообщения из WebSocket: {e}")
+            self.log.error(f"Ошибка при получении: {e}")
             return None
 
-    async def close(self):
-        """
-        Закрытие WebSocket-соединения.
-        """
+    async def close(self) -> None:
         if self.websocket:
             await self.websocket.close()
-            logger.info("Соединение WebSocket закрыто")
-        else:
-            logger.warning("Попытка закрытия WebSocket, но соединение не установлено")
+            self.log.info("WebSocket соединение закрыто")
+

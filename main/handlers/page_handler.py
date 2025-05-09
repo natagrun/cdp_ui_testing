@@ -1,20 +1,19 @@
 import asyncio
 import base64
 import json
-import logging
 import time
 
 from main.handlers.base_handler import BaseHandler
 from main.utils.parser import parse_response
-
-logger = logging.getLogger(__name__)
-
 
 class PageHandler(BaseHandler):
     """
     Обработчик команд протокола Page в Chrome DevTools Protocol.
     Предоставляет методы навигации, ожидания загрузки, получения метрик и скриншотов.
     """
+    def __init__(self, websocket_client, logger_obj):
+        super().__init__(websocket_client,logger_obj)
+        self.log = logger_obj.getChild("PageHandler")
 
     async def enable_page(self):
         """
@@ -22,9 +21,9 @@ class PageHandler(BaseHandler):
 
         :return: Ответ CDP в формате словаря
         """
-        logger.info("Enabling Page domain")
+        self.log.info("Включаем домен Page")
         response = await self.send_request("Page.enable")
-        logger.debug(f"Page.enable response: {response}")
+        self.log.debug(f"Page.enable ответ: {response}")
         return response
 
     async def navigate(self, url: str):
@@ -34,9 +33,9 @@ class PageHandler(BaseHandler):
         :param url: Целевой URL
         :return: Ответ CDP от команды navigate
         """
-        logger.info(f"Navigating to {url}")
+        self.log.info(f"Переходим на страницу {url}")
         response = await self.send_request("Page.navigate", {"url": url})
-        logger.debug(f"Page.navigate response: {response}")
+        self.log.debug(f"Page.navigate ответ: {response}")
         await self.wait_for_page_load()
         return response
 
@@ -46,14 +45,14 @@ class PageHandler(BaseHandler):
 
         :param timeout: Максимальное время ожидания (в секундах)
         """
-        logger.info("Waiting for full page load...")
+        self.log.info("Ждем полную загрузку страницы...")
         start_time = time.time()
         active_frames = set()
         load_event_fired = False
 
         while True:
             if time.time() - start_time > timeout:
-                logger.warning("Timeout while waiting for page load")
+                self.log.warning("Истек таймаут ожидания страниц")
                 break
 
             try:
@@ -63,11 +62,12 @@ class PageHandler(BaseHandler):
                 response_data = json.loads(response)
             except asyncio.TimeoutError:
                 if load_event_fired and not active_frames:
-                    logger.info("Load event fired and no active frames — assuming page loaded")
+                    self.log.info("Пришло событие 'Load event fired' и "
+                                  "нет активных фреймов — делаем вывод что страница загружена")
                     break
                 continue
             except Exception as e:
-                logger.exception(f"Error while receiving page load message: {e}")
+                self.log.exception(f"Ошибка в приеме сообщений загрузки страницы: {e}")
                 continue
 
             method = response_data.get("method")
@@ -81,7 +81,7 @@ class PageHandler(BaseHandler):
             elif method == "Page.loadEventFired":
                 load_event_fired = True
 
-        logger.info("Page load completed")
+        self.log.info("Страница загружена")
 
     async def wait_for_page_dom_load(self, timeout=3, inactivity_timeout=0.2):
         """
@@ -91,7 +91,7 @@ class PageHandler(BaseHandler):
         :param inactivity_timeout: Период неактивности для завершения ожидания
         :return: Словарь с результатами ожидания
         """
-        logger.info("Waiting for DOM stability...")
+        self.log.info("Ждем стабилизации DOM...")
         start_time = time.time()
         last_activity = time.time()
         active_frames = set()
@@ -101,10 +101,11 @@ class PageHandler(BaseHandler):
         while True:
             now = time.time()
             if now - start_time > timeout:
-                logger.warning("Timeout reached while waiting for DOM")
+                self.log.warning("Достигнут таймаут в ожидании DOM")
                 break
             if now - last_activity > inactivity_timeout:
-                logger.info("DOM inactivity period reached — assuming stable DOM")
+                self.log.info("DOM не проявляет активности назначенное время"
+                              "делаем вывод что DOM стабилизирован")
                 break
 
             try:
@@ -134,10 +135,10 @@ class PageHandler(BaseHandler):
             except asyncio.TimeoutError:
                 continue
             except Exception as e:
-                logger.error(f"Error while checking DOM activity: {e}")
+                self.log.error(f"Ошибка в проверке активности DOM: {e}")
 
         duration = time.time() - start_time
-        logger.info(f"DOM load completed in {duration:.2f}s")
+        self.log.info(f"Загрузка DOM завершена за {duration:.2f}s")
         return {
             "status": "completed",
             "active_frames": len(active_frames),
@@ -152,7 +153,7 @@ class PageHandler(BaseHandler):
 
         :return: Ответ CDP от Page.reload
         """
-        logger.info("Reloading page...")
+        self.log.info("Перезагрузка страницы...")
         response = await self.send_request("Page.reload")
         await self.wait_for_page_load()
         return response
@@ -166,7 +167,7 @@ class PageHandler(BaseHandler):
         :param clip: Область для скриншота
         :return: Ответ CDP от captureScreenshot
         """
-        logger.info("Capturing screenshot...")
+        self.log.info("Создание скриншота...")
         params = {"format": format, "quality": quality}
         if clip:
             params["clip"] = clip
@@ -177,9 +178,10 @@ class PageHandler(BaseHandler):
 
         if screenshot_data:
             img_data = base64.b64decode(screenshot_data)
-            with open("../main/screenshot.png", "wb") as file:
+            name = str(time.time())+"screenshot.png"
+            with open(f"../main/{name}", "wb") as file:
                 file.write(img_data)
-            logger.info("Screenshot saved to ../main/screenshot.png")
+            self.log.info(f"Скриншот сохранен в ../main/{name}")
 
         return response
 
@@ -189,7 +191,7 @@ class PageHandler(BaseHandler):
 
         :return: Ответ CDP от Page.stopLoading
         """
-        logger.info("Stopping page load")
+        self.log.info("Прерываем загрузку страницы")
         response = await self.send_request("Page.stopLoading")
         return response
 
@@ -200,7 +202,7 @@ class PageHandler(BaseHandler):
         :param script: JS-код для выполнения
         :return: Ответ CDP от Page.addScriptToEvaluateOnNewDocument
         """
-        logger.info("Adding script to evaluate on new document")
+        self.log.info("Добавляем скрипт, который будет выполняться на каждой новой странице.")
         params = {"source": script}
         response = await self.send_request("Page.addScriptToEvaluateOnNewDocument", params)
         return response
@@ -211,7 +213,7 @@ class PageHandler(BaseHandler):
 
         :return: Ответ CDP от Page.getLayoutMetrics
         """
-        logger.info("Getting layout metrics")
+        self.log.info("Получаем информацию о текущей раскладке страницы.")
         response = await self.send_request("Page.getLayoutMetrics")
         return response
 
@@ -221,13 +223,13 @@ class PageHandler(BaseHandler):
 
         :return: None
         """
-        logger.info("Setting up navigation listeners")
+        self.log.info("Включает отслеживание появления новых целей/вкладок.")
         response = await self.send_request("Target.setDiscoverTargets", {"discover": True})
-        logger.debug(f"Target discovery response: {response}")
+        self.log.debug(f"Ответ: {response}")
         while True:
             query_response = await self.client.receive_message()
             parsed_query = await parse_response(query_response)
-            logger.debug(f"Target event received: {parsed_query}")
+            self.log.debug(f"Целевой ответ: {parsed_query}")
 
     async def wait_for_navigation(self, timeout=10):
         """
@@ -236,12 +238,12 @@ class PageHandler(BaseHandler):
         :param timeout: Таймаут в секундах
         :return: URL новой страницы или None
         """
-        logger.info("Waiting for navigation event")
+        self.log.info("Ожидаем навигацию")
         try:
             navigation_event = await asyncio.wait_for(self._wait_for_navigation_event(), timeout=timeout)
             return navigation_event
         except asyncio.TimeoutError:
-            logger.warning("Navigation timeout")
+            self.log.warning("Таймаут навигации")
             return None
 
     async def _wait_for_navigation_event(self):

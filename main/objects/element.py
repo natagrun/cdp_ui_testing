@@ -1,91 +1,91 @@
 from typing import Optional, Dict, Any
-from main.logging.logger import StepLogger  # обновлённый StepLogger
 
+from main.utils.math import get_center_coordinates
 
 class Element:
     def __init__(self, node_id: int, backend_node_id: int, node_name: str,
                  box_model: Optional[Dict[str, Any]], document_url: Optional[str],
-                 dom_handler=None, step_logger: Optional[StepLogger] = None):
+                 dom_handler=None, input_handler =None, logger = None):
         self.node_id = node_id
         self.backend_node_id = backend_node_id
         self.node_name = node_name
         self.box_model = box_model
         self.document_url = document_url
         self._dom_handler = dom_handler
-        self._step_logger = step_logger
-
-    def __repr__(self):
-        return (f"<Element node_id={self.node_id}, backend_node_id={self.backend_node_id}, "
-                f"node_name='{self.node_name}', url='{self.document_url}'>")
+        self._input_handler = input_handler
+        self._log = logger
 
     async def click(self) -> bool:
-        if self._step_logger:
-            self._step_logger.log_step("Клик по элементу", True, str(self))
-        if self._dom_handler:
-            result = await self._dom_handler.click_element(self)
-            if self._step_logger:
-                self._step_logger.log_step("Результат клика", result)
-            return result
-        if self._step_logger:
-            self._step_logger.log_step("Ошибка: DOMHandler не привязан", False)
+        if self._dom_handler and self._input_handler:
+            await self._input_handler.move_mouse_on_element(self)
+            await self._input_handler.click_element(self)
+            await self._dom_handler.wait_for_page_dom_load()
+
         return False
 
     async def get_text(self) -> Optional[str]:
-        if self._dom_handler:
-            text = await self._dom_handler.get_text_by_element(self)
-            if self._step_logger:
-                self._step_logger.log_step("Получение текста", True, text or "")
+        if self._input_handler:
+            text = await self._input_handler.get_text_by_element(self)
             return text
-        if self._step_logger:
-            self._step_logger.log_step("Ошибка: DOMHandler не привязан при получении текста", False)
+
         return None
 
     async def get_attributes(self) -> Optional[Dict[str, str]]:
         if self._dom_handler:
             attrs = await self._dom_handler.get_attributes(self)
-            if self._step_logger:
-                self._step_logger.log_step("Получение атрибутов", True, str(attrs))
             return attrs
-        if self._step_logger:
-            self._step_logger.log_step("Ошибка: DOMHandler не привязан при получении атрибутов", False)
+
         return None
 
     async def scroll_into_view(self) -> bool:
-        if self._dom_handler:
-            result = await self._dom_handler.scroll_to_element(self)
-            if self._step_logger:
-                self._step_logger.log_step("Прокрутка к элементу", result)
+        if self._input_handler:
+            result = await self._input_handler.scroll_to_element(self)
             return result
-        if self._step_logger:
-            self._step_logger.log_step("Ошибка: DOMHandler не привязан при прокрутке", False)
-        return False
+        else:
+            return False
 
     async def highlight(self, color="red", thickness="2px", duration=10.0):
         if self._dom_handler:
             result = await self._dom_handler.highlight_element_border(self.node_id, color, thickness, duration)
-            if self._step_logger:
-                self._step_logger.log_step("Подсветка элемента", result)
             return result
-        if self._step_logger:
-            self._step_logger.log_step("Ошибка: DOMHandler не привязан при подсветке", False)
-        return False
+        else:
+            return False
 
     async def insert_text(self, text: str) -> bool:
-        if self._dom_handler:
-            result = await self._dom_handler.insert_text(self, text)
-            if self._step_logger:
-                self._step_logger.log_step("Ввод текста", result, text)
+        if self._input_handler:
+            result = await self._input_handler.insert_text(self, text)
+            await self._dom_handler.wait_for_page_dom_load()
             return result
-        if self._step_logger:
-            self._step_logger.log_step("Ошибка: DOMHandler не привязан при вводе текста", False)
-        return False
+        else:
+            return False
 
     async def move_mouse(self):
-        if self._dom_handler:
-            await self._dom_handler.move_mouse_on_element(self)
+        if self._dom_handler and self._input_handler:
+            await self._input_handler.move_mouse_on_element(self)
             await self._dom_handler.wait_for_page_dom_load()
-            if self._step_logger:
-                self._step_logger.log_step("Наведение курсора мыши", True)
-        else:
-            if self._step_logger:
-                self._step_logger.log_step("Ошибка: DOMHandler не привязан при наведении курсора", False)
+
+    async def focus(self) -> bool:
+        """Навести фокус на элемент."""
+        return await self._dom_handler.focus_on_element(self)
+
+    async def clear(self) -> bool:
+        """Очистить поле (Ctrl+A + Backspace)."""
+        return await self._input_handler.clear_field(self)
+
+    async def double_click(self) -> bool:
+        """Двойной клик по элементу."""
+        x, y = await get_center_coordinates(self.box_model)
+        await self._input_handler.move_mouse(x, y)
+        await self._input_handler.press_mouse(x, y)
+        await self._input_handler.release_mouse(x, y)
+        await self._input_handler.press_mouse(x, y)
+        await self._input_handler.release_mouse(x, y)
+        return True
+
+    async def right_click(self) -> bool:
+        """Клик правой кнопкой."""
+        x, y = await get_center_coordinates(self.box_model)
+        await self._input_handler.move_mouse(x, y)
+        await self._input_handler.press_mouse(x,y,1)
+        await self._input_handler.release_mouse(x,y,1)
+        return True
