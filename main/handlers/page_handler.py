@@ -39,12 +39,13 @@ class PageHandler(BaseHandler):
         await self.wait_for_page_load()
         return response
 
-    async def wait_for_page_load(self, timeout=30):
+    async def wait_for_page_load(self, timeout=0):
         """
         Ожидает полной загрузки страницы по событиям CDP.
 
         :param timeout: Максимальное время ожидания (в секундах)
         """
+        if timeout==0: timeout = self.client.configurator.command_timeout
         self.log.info("Ждем полную загрузку страницы...")
         start_time = time.time()
         active_frames = set()
@@ -83,7 +84,7 @@ class PageHandler(BaseHandler):
 
         self.log.info("Страница загружена")
 
-    async def wait_for_page_dom_load(self, timeout=3, inactivity_timeout=0.2):
+    async def wait_for_page_dom_load(self, timeout=0, inactivity_timeout=0):
         """
         Ожидает стабилизации DOM-дерева страницы по активности и фреймам.
 
@@ -91,6 +92,8 @@ class PageHandler(BaseHandler):
         :param inactivity_timeout: Период неактивности для завершения ожидания
         :return: Словарь с результатами ожидания
         """
+        if timeout==0: timeout = self.client.configurator.command_timeout
+        if inactivity_timeout == 0: inactivity_timeout = self.client.configurator.inactivity_timeout
         self.log.info("Ждем стабилизации DOM...")
         start_time = time.time()
         last_activity = time.time()
@@ -231,13 +234,14 @@ class PageHandler(BaseHandler):
             parsed_query = await parse_response(query_response)
             self.log.debug(f"Целевой ответ: {parsed_query}")
 
-    async def wait_for_navigation(self, timeout=10):
+    async def wait_for_navigation(self, timeout=0):
         """
         Ожидает навигации и возвращает новый URL.
 
         :param timeout: Таймаут в секундах
         :return: URL новой страницы или None
         """
+        if timeout==0: timeout = self.client.configurator.command_timeout
         self.log.info("Ожидаем навигацию")
         try:
             navigation_event = await asyncio.wait_for(self._wait_for_navigation_event(), timeout=timeout)

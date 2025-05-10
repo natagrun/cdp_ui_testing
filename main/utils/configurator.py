@@ -69,7 +69,7 @@ class Configurator:
             "chrome": {"path": guessed},
             "websocket_url_source": "auto",
             "devtools": {"url": "http://localhost:9222/json"},
-            "timeouts": {"connect": 10, "command": 30},
+            "timeouts": {"connect": 10, "command": 10,"inactivity":3},
             "logging": {"level": "INFO", "file": None}
         }
         if not p.exists():
@@ -123,6 +123,10 @@ class Configurator:
     @property
     def command_timeout(self) -> int:
         return self.timeout("command")
+
+    @property
+    def inactivity_timeout(self) -> int:
+        return self.timeout("inactivity")
 
     @property
     def logging_level(self) -> str:

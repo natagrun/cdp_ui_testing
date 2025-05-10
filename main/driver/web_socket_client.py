@@ -8,12 +8,13 @@ class WebSocketClient:
     """
     Класс для работы с WebSocket-соединением.
     """
-    def __init__(self, url: str, connect_timeout: int, retries: int, logger):
+    def __init__(self, url: str, connect_timeout: int, retries: int, logger,config):
         self.url = url
         self.websocket = None
         self.retries = retries
         self.connect_timeout = connect_timeout
         self.log = logger
+        self.configurator = config
         self.log.debug(f"Создан WebSocketClient(url={url}, retries={retries}, timeout={connect_timeout})")
 
     async def connect(self) -> None:

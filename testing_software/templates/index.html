@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Тестовое SPA</title>
+  <style>
+    body { font-family: sans-serif; padding: 2rem; max-width: 800px; margin: auto; }
+    .card { border: 1px solid #ccc; border-radius: 10px; padding: 1rem; margin-bottom: 1rem; }
+    .hover-box { position: relative; display: inline-block; cursor: pointer; color: blue; text-decoration: underline; }
+    .hover-box .tooltip { display: none; position: absolute; background: #333; color: white; padding: 0.5rem; border-radius: 5px; top: 1.5rem; left: 0; white-space: nowrap; }
+    .hover-box:hover .tooltip { display: block; }
+  </style>
+</head>
+<body>
+  <h1>Тестовое SPA-приложение</h1>
+
+  <div class="card">
+    <button onclick="document.getElementById('output').innerText='Вы нажали на кнопку!'">
+      Нажми меня
+    </button>
+    <p id="output" style="color: green; font-weight: bold;"></p>
+  </div>
+
+  <div class="card">
+    <label for="textInput">Поле ввода:</label>
+    <input type="text" id="textInput" placeholder="Введите что-нибудь..." />
+    <button onclick="validateInput()">Проверить</button>
+    <p id="error" style="color: red;"></p>
+  </div>
+
+  <div class="card">
+    <div class="hover-box">
+      Наведи на меня
+      <div class="tooltip">Я появился по hover!</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <label><input type="checkbox" id="checkbox" /> Чекбокс</label><br />
+    <label><input type="radio" name="radio" value="1" /> Один</label>
+    <label><input type="radio" name="radio" value="2" /> Два</label><br />
+    <label>Текстовая область:</label><br />
+    <textarea rows="3" cols="30" placeholder="Введите длинный текст..."></textarea>
+  </div>
+
+  <script>
+    function validateInput() {
+      const input = document.getElementById('textInput').value.trim();
+      const error = document.getElementById('error');
+      if (input === '') {
+        error.textContent = 'Поле не должно быть пустым';
+      } else {
+        error.textContent = '';
+      }
+    }
+  </script>
+</body>
+</html>

@@ -47,7 +47,7 @@ class DOMHandler(BaseHandler):
         self.log.debug(f"DOM деактивирован: {parsed}")
         return parsed
 
-    async def wait_for_condition(self, check_function, timeout: float = 5.0, poll_frequency: float = 0.1, *args,
+    async def wait_for_condition(self, check_function, timeout: float = -1, poll_frequency: float = 0, *args,
                                  **kwargs) -> bool:
         """
         Ожидает выполнения условия в течение заданного времени с заданной частотой опроса.
@@ -57,7 +57,10 @@ class DOMHandler(BaseHandler):
         :param poll_frequency: Интервал между проверками условия в секундах
         :return: True, если условие выполнено в течение таймаута, иначе False
         """
+        if timeout==-1: timeout = self.client.configurator.command_timeout
+        if poll_frequency == -1: poll_frequency = self.client.configurator.inactivity_timeout
         self.log.debug(f"Ожидает выполнения условия в течение {timeout}, с интервалом {poll_frequency}")
+
         start_time = time.time()
         while time.time() - start_time < timeout:
             try:
@@ -70,7 +73,7 @@ class DOMHandler(BaseHandler):
         self.log.warning("Условие не выполнилось за время таймаута")
         return False
 
-    async def wait_for_page_dom_load(self, timeout: float = 10.0, inactivity_timeout: float = 3,
+    async def wait_for_page_dom_load(self, timeout: float = 0, inactivity_timeout: float = 0,
                                      target_class: str = "pulldown_desktop") -> None:
         """
         Ожидает полной загрузки DOM-дерева и активности страницы.
@@ -79,6 +82,8 @@ class DOMHandler(BaseHandler):
         :param inactivity_timeout: Таймаут бездействия (секунды)
         :param target_class: Имя класса элемента, по которому определяется завершение загрузки
         """
+        if timeout==0: timeout = self.client.configurator.command_timeout
+        if inactivity_timeout == 0: inactivity_timeout = self.client.configurator.inactivity_timeout
         self.log.info(f"Ожидаем загрузки DOM страницы {timeout}s  при времени неактивности {inactivity_timeout}s")
         start_time = time.time()
         last_activity = time.time()
@@ -278,7 +283,7 @@ class DOMHandler(BaseHandler):
             self.log.error(f"Ошибка поиска элемента по search ID: {e}")
             return None
 
-    async def find_element_by_xpath(self, xpath: str) -> Element | None:
+    async def find_element_by_xpath(self, xpath: str, name:str) -> Element | None:
         """
         Найти элемент по XPath и вернуть объект Element.
         Логирует все действия в StepLogger, который создаётся автоматически, если не передан.
@@ -306,7 +311,8 @@ class DOMHandler(BaseHandler):
                 document_url=document.get("result", {}).get("documentURL"),
                 dom_handler=self,
                 input_handler=InputHandler(self.client, self.log),
-                logger = self.log
+                logger = self.log,
+                name=name
             )
 
             return element

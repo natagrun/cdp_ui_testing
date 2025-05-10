@@ -9,6 +9,7 @@ from main.handlers.dom_handler import DOMHandler
 from main.handlers.navigation_handler import NavigationHandler
 from main.handlers.page_handler import PageHandler
 from main.handlers.runtime_handler import RuntimeHandler
+from main.utils.assertions import Assertions
 from main.utils.configurator import Configurator
 
 def setup_logger(log_file: str, level: str = "INFO"):
@@ -80,6 +81,7 @@ class CdpDriver:
         self.navigation: Optional[NavigationHandler] = None
         self.runtime: Optional[RuntimeHandler] = None
         self.initialized = False
+        self.assertions: Optional[Assertions] = None
         self.log = setup_logger(
             log_file=self.configurator.logging_file or "cdp_ui.log",
             level=self.configurator.logging_level
@@ -94,7 +96,7 @@ class CdpDriver:
 
     async def setup(self) -> bool:
         self.log.info("Инициализация CDP драйвера...")
-
+        self.assertions = Assertions(self.log)
         # Получение URL и создание WS-клиента
         source = self.configurator.websocket_url_source
         url = os.getenv("CDP_WEBSOCKET_URL") if source == "env" else await get_websocket_url(self.configurator,self.log)
@@ -106,7 +108,8 @@ class CdpDriver:
             url,
             connect_timeout=self.configurator.connect_timeout,
             retries=self.configurator.timeout("connect"),
-            logger=self.log
+            logger=self.log,
+            config = self.configurator
         )
         try:
             await self.websocket_client.connect()
