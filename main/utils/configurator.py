@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import platform
+from datetime import datetime
 from pathlib import Path
 from typing import *
 
@@ -70,7 +71,7 @@ class Configurator:
             "websocket_url_source": "auto",
             "devtools": {"url": "http://localhost:9222/json"},
             "timeouts": {"connect": 10, "command": 10,"inactivity":3},
-            "logging": {"level": "INFO", "file": None}
+            "logging": {"level": "INFO", "file": f"main/logs/logs_on_{datetime.now().strftime('%Y-%m-%d')}.log"}
         }
         if not p.exists():
             logger.info(f"Config not found at {path}, creating default JSON config.")
@@ -80,7 +81,7 @@ class Configurator:
             return default
         with open(p, "r", encoding="utf-8") as f:
             existing = json.load(f)
-        # Merge missing defaults
+
         merged = {**default, **existing}
         if "chrome" in existing:
             merged["chrome"]["path"] = existing["chrome"].get("path", guessed)

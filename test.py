@@ -51,11 +51,10 @@ async def test_websocket_connection():
             await assertor.assert_element_text_contains(dom, checkbox_text, "Согласие не получено.")
 
             logger.info("Тест успешно завершён")
+            await driver.teardown()
    except Exception as e:
+
        print(f"Error: {e}")
-   finally:
-        # Закрываем WebSocket-соединение
-        await driver.teardown()
 
 
 # Запуск основного теста
